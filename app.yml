@@ -26,8 +26,8 @@ application:
     - musculoskeletal
 runtime:
   cpu: 2048
-  # One sample in memory at a time. Measured in the linux/amd64 image: a 27.7 k-nucleus Flex sample (78 M
-  # non-zeros) peaks at 1.85 GB, the whole 12-sample DRG C2 demo at 1.65 GB; see README "Runtime".
+  # One sample in memory at a time. Measured in the linux/amd64 image: all 42 Discover 480 samples (the
+  # largest 29.4 k nuclei, 94 M non-zeros) peak at 2.20 GB RSS, Discover 475 at 1.66 GB; see README "Runtime".
   memory: 3008
   # standard (ECS) by default; a light step a workflow can also run as a Lambda function (the image
   # serves both, see processor/entry.py). Lambda stops a run after 15 minutes.
@@ -72,6 +72,16 @@ parameters:
       uses condition if the sample sheet has one, else subject_experimental_group, else
       sample_experimental_group; none writes no condition column.
     defaultValue: auto
+  - name: SOURCE_COLUMNS
+    type: string
+    label: Extra source columns on cells
+    description: >-
+      Comma-separated per-cell columns of an .h5ad or Seurat input (names as in the file) to copy onto
+      cells besides the label-like ones always copied (cell type, cluster, leiden / louvain,
+      seurat_clusters, *_snn_res.*, annotation, subclass, orig.ident, ...). Other source columns
+      (author objects often carry clinical fields per cell) are not copied; their names, never their
+      values, are listed in metadata/source_columns.csv.
+    defaultValue: ""
   - name: MAX_CELLS_PER_SAMPLE
     type: integer
     label: Maximum cells per sample
@@ -124,9 +134,9 @@ outputs:
     description: >-
       cells/<sample_id>.h5ad, one per sample: raw counts in X (CSR, int32), obs_names
       <sample_id>:<barcode>, obs (sample_id, total_counts, n_genes_by_counts, pct_counts_mt,
-      pct_counts_ribo, condition, the metadata columns, the source's own per-cell columns), var
-      (gene symbols, gene_ids, feature_types, mt, ribo), uns["pennsieve"] (source, chemistry,
-      organism, prep_version); provenance.json, summary.json.
+      pct_counts_ribo, condition, the metadata columns, the source's label columns), var (gene
+      symbols, gene_ids, feature_types, mt, ribo), uns["pennsieve"] (source, chemistry, organism,
+      prep_version); provenance.json.
     formats:
       - format_3590
     mediaTypes:
@@ -135,8 +145,7 @@ outputs:
   - name: droplets
     description: >-
       droplets/<sample_id>.raw.h5, the sample's raw (unfiltered) matrix as 10x HDF5 (Gene Expression
-      only), when the input has one; sc-qc uses it for ambient RNA removal. provenance.json,
-      summary.json.
+      only), when the input has one; sc-qc uses it for ambient RNA removal. provenance.json.
     formats:
       - format_3590
     mediaTypes:
@@ -146,6 +155,8 @@ outputs:
     description: >-
       metadata/samples.csv (sample_id, path, source, n_obs, n_genes, organism, condition and the
       metadata put on cells), metadata/samples_full.csv (every sample sheet and SPARC column),
+      metadata/source_columns.csv (per sample, the per-cell columns of an .h5ad / Seurat input and
+      whether each was copied onto cells; names only),
       metadata/prep.json (per sample: source, files read, chemistry, organism, droplets, features
       and cells kept / dropped, SPARC match, warnings; skipped and ignored inputs),
       provenance.json, summary.json.

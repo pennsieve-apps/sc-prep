@@ -3,8 +3,9 @@ A tiny synthetic input tree with one sample per supported layout, small enough f
 
   python -m tests.make_fixture data/fixture [--layout linked|flat|both]
 
-writes data/fixture/linked/counts/ (what a linked `counts` input looks like) and/or data/fixture/flat/
-(the same files at the root of INPUT_DIR) with:
+writes data/fixture/linked/ (the platform's real link layout: a real port folder counts/ whose entries are
+symlinks into the sibling upstream folder data/fixture/upstream/) and/or data/fixture/flat/ (the same files
+at the root of INPUT_DIR) with:
 
   samples.xlsx, subjects.xlsx   SPARC sheets: two samples of two subjects (a clashing column, two columns that
                                 fall together in snake_case, an empty column, clinical columns)
@@ -14,7 +15,8 @@ writes data/fixture/linked/counts/ (what a linked `counts` input looks like) and
   arc1/outs/                    Cell Ranger ARC: filtered + raw .h5 with Gene Expression and Peaks, atac_fragments
   run3/outs/                    Cell Ranger count (mouse) as MTX folders: filtered_feature_bc_matrix/ + raw_…/
   aggr/filtered_feature_bc_matrix/  an aggregated MTX with barcode suffixes -1 and -2 (one sample without a sheet)
-  tab.h5ad                      counts in layers["counts"], log-normalised X, Ensembl var_names + feature_name
+  tab.h5ad                      counts in layers["counts"], log-normalised X, Ensembl var_names + feature_name,
+                                obs cell_type (a label: copied) and pain_score (clinical: not copied by default)
   multi.h5ad                    counts in raw.X only, obs["sample_id"] with two samples (split into m1, m2)
   seurat.rds                    a Seurat v5 object with split layers (tests/data, made by tests/data/make_rds.R)
   matrix_only.rds               a bare dgCMatrix (not a Seurat object: that sample fails, the run goes on)
@@ -146,7 +148,7 @@ def make_tree(root: Path) -> None:
 
     C = counts(16, len(HUMAN), 8)
     a = ad.AnnData(X=sp.csr_matrix(np.log1p(C).astype(np.float32)),
-                   obs=pd.DataFrame({"cell_type": ["neuron", "glia"] * 8}, index=barcodes(16)),
+                   obs=pd.DataFrame({"cell_type": ["neuron", "glia"] * 8, "pain_score": [7.0] * 16}, index=barcodes(16)),
                    var=pd.DataFrame({"feature_name": HUMAN}, index=HUMAN_IDS))
     a.layers["counts"] = sp.csr_matrix(C)
     a.write_h5ad(root / "tab.h5ad")
@@ -167,7 +169,11 @@ def make_fixture(out: Path, layout: str = "both") -> dict[str, Path]:
     out = Path(out)
     roots = {}
     if layout in ("linked", "both"):
-        make_tree(out / "linked" / "counts")
+        make_tree(out / "upstream")
+        port = out / "linked" / "counts"
+        port.mkdir(parents=True)
+        for entry in sorted((out / "upstream").iterdir()):
+            (port / entry.name).symlink_to(Path("../../upstream") / entry.name)   # relative: also valid in Docker
         roots["linked"] = out / "linked"
     if layout in ("flat", "both"):
         make_tree(out / "flat")

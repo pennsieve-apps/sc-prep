@@ -111,7 +111,7 @@ def main(src: str, dst: str, limit: int) -> None:
             obs[col] = obs[col].astype("string").fillna("").astype(str)
     import anndata as ad
 
-    ad.AnnData(X=X, obs=obs, var=pd.DataFrame(index=pd.Index(features))).write_h5ad(dst)
+    ad.AnnData(X=X, obs=obs, var=pd.DataFrame(index=pd.Index(features))).write_h5ad(dst, compression="gzip")
     print(json.dumps({"assay": name, "assay_class": "/".join(assay_class), "active_assay": active,
                       "layers": keys, "n_cells": int(X.shape[0]), "n_features": int(X.shape[1])}))
 

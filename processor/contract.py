@@ -18,6 +18,11 @@ import scipy.sparse as sp
 from processor.readers import GEX, Read
 
 QC_OBS = ["total_counts", "n_genes_by_counts", "pct_counts_mt", "pct_counts_ribo"]
+# Per-cell columns of a source .h5ad / Seurat object that are labels (author cell types, clusters, the sample
+# column): copied onto cells. Any other source column (author objects often carry clinical fields per cell) is
+# copied only when named in SOURCE_COLUMNS; the names (never the values) are listed in source_columns.csv.
+LABEL_RE = re.compile(r"^(orig_ident|class|.*_snn_res_.*|(.*_)?(leiden|louvain|clusters?|cell_?types?|annotations?|"
+                      r"sub_?class(es)?|sub_?types?|labels?)(_.*)?)$", re.IGNORECASE)
 # obs columns this and later steps write; a source column of the same name is kept as source_<name>
 RESERVED = {"sample_id", "condition", *QC_OBS, "doublet_score", "predicted_doublet", "ambient_fraction", "cluster",
             "cell_type", "cell_type_score", "cell_type_source"}
@@ -141,9 +146,13 @@ def finalise(read: Read, sample_id: str, source_rel: str, params: dict, metadata
     for col in obs_columns:
         val = metadata.get(col, "")
         new[col] = pd.Categorical([val] * adata.n_obs if val else [np.nan] * adata.n_obs)
-    renamed = []
+    renamed, source_columns = [], {}
     for col in obs.columns:
+        if not (LABEL_RE.match(re.sub(r"[.\-\s]+", "_", str(col))) or str(col) in params["SOURCE_COLUMNS"]):
+            source_columns[str(col)] = None
+            continue
         name = f"source_{col}" if col in RESERVED or col in new.columns else str(col)
+        source_columns[str(col)] = name
         if name != col:
             renamed.append(str(col))
         v = obs[col].to_numpy()
@@ -171,6 +180,7 @@ def finalise(read: Read, sample_id: str, source_rel: str, params: dict, metadata
         "cells": {"n_source": int(n_obs_source), "n_below_min_counts": int(n_obs_source - n_after_floor),
                   "n_subsampled_to": int(len(idx)) if sub is not None else None, "n_written": int(adata.n_obs)},
         "atac_present": bool(meta.get("atac_present")), "n_obs": int(adata.n_obs), "n_genes": int(adata.n_vars),
+        "source_columns": source_columns,
         "warnings": warnings,
     }
     for k in ("software_version", "atac_fragments", "counts_from", "split_by", "barcode_suffix", "seurat"):

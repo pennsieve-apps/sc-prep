@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
+from collections import Counter
 import os
 from pathlib import Path
 
@@ -17,7 +19,9 @@ import scipy.sparse as sp
 from processor import handler
 from processor import main as app
 from processor import readers as R
+from processor import inputs as I
 from processor.inputs import Candidate
+from processor.safe_inputs import InputDir
 from processor.sparc import snake
 from tests.make_fixture import DATA, HUMAN, N_PEAKS, make_fixture, write_mtx
 
@@ -62,11 +66,11 @@ def outputs(fixture_root, tmp_path_factory) -> dict[str, Path]:
 @pytest.mark.parametrize("layout", ["linked", "flat"])
 def test_every_sample_written(outputs, layout):
     out = outputs[layout]
-    assert {p.name for p in (out / "cells").iterdir()} == {f"{s}.h5ad" for s in SAMPLES} | {"provenance.json", "summary.json"}
+    assert {p.name for p in (out / "cells").iterdir()} == {f"{s}.h5ad" for s in SAMPLES} | {"provenance.json"}
     assert {p.name for p in (out / "droplets").iterdir()} == \
-        {f"{s}.raw.h5" for s in ("sam-A1", "sam-B1", "arc1", "run3")} | {"provenance.json", "summary.json"}
+        {f"{s}.raw.h5" for s in ("sam-A1", "sam-B1", "arc1", "run3")} | {"provenance.json"}
     assert {p.name for p in (out / "metadata").iterdir()} == \
-        {"samples.csv", "samples_full.csv", "prep.json", "provenance.json", "summary.json"}
+        {"samples.csv", "samples_full.csv", "source_columns.csv", "prep.json", "provenance.json", "summary.json"}
     table = rows(out / "metadata" / "samples.csv")
     assert set(table) == SAMPLES
     prefix = "counts/" if layout == "linked" else ""
@@ -93,11 +97,14 @@ def test_every_sample_written(outputs, layout):
     assert prep["samples"]["s1"]["seurat"]["layers"] == ["counts.s1", "counts.s2"]
 
     prov = json.loads((out / "cells" / "provenance.json").read_text())
-    assert {"app", "version", "tools", "parameters", "inputs", "started", "finished", "samples", "peak_rss_mb",
-            "citations"} <= set(prov)
+    assert set(prov) - {"cgroup_peak_mb"} == {"app", "version", "tools", "parameters", "inputs", "started", "finished",
+                                              "samples", "peak_rss_mb", "threads", "citations"}
     assert prov["app"] == "sc-prep" and prov["version"] == VERSION and prov["tools"]["scanpy"]
-    assert prov["n_ok"] == len(SAMPLES) and prov["n_failed"] == 1 and prov["peak_rss_mb"] > 0
-    assert {"doi": "10.1186/s13059-017-1382-0", "pmid": "29409532", "text": "Wolf et al. Genome Biology 2018 (Scanpy)"} \
+    assert isinstance(prov["threads"], int) and prov["peak_rss_mb"] > 0
+    assert f"{prefix}primary/sub-A/sam-A1/count" in prov["inputs"] and f"{prefix}samples.xlsx" in prov["inputs"]
+    assert Counter(s["status"] for s in prov["samples"]) == {"ok": len(SAMPLES), "failed": 1}
+    assert prov["started"].endswith("+00:00") and len(prov["started"]) == 25
+    assert {"doi": "10.1186/s13059-017-1382-0", "pmid": "29409532", "text": "Wolf FA et al. Genome Biol 2018"} \
         in prov["citations"]
     assert "10.21105/joss.07540" in [c["doi"] for c in prov["citations"]]     # a Seurat file was read
     assert all(set(c) <= {"doi", "pmid", "text"} and c["doi"] and c["text"] for c in prov["citations"])
@@ -147,24 +154,27 @@ def test_droplets(outputs, fixture_root):
     # Flex: copied as it is
     assert (d / "sam-A1.raw.h5").read_bytes() == (src / "primary/sub-A/sam-A1/count/sample_raw_feature_bc_matrix.h5").read_bytes()
     # ARC: Peaks left out, gene counts unchanged
-    X, bc, var, _ = R.read_10x_h5(d / "arc1.raw.h5")
-    X0, bc0, var0, _ = R.read_10x_h5(src / "arc1/outs/raw_feature_bc_matrix.h5")
+    out, inp = InputDir(d), InputDir(src)
+    X, bc, var, _ = R.read_10x_h5(out, d / "arc1.raw.h5")
+    X0, bc0, var0, _ = R.read_10x_h5(inp, src / "arc1/outs/raw_feature_bc_matrix.h5")
     gex = (var0["feature_types"] == "Gene Expression").to_numpy()
     assert set(var["feature_types"]) == {"Gene Expression"} and list(bc) == list(bc0)
     assert (X != X0[:, np.flatnonzero(gex)]).nnz == 0
     # MTX: converted
-    X, bc, var, _ = R.read_10x_h5(d / "run3.raw.h5")
-    X0, bc0, var0, _ = R.read_10x_mtx(src / "run3/outs/raw_feature_bc_matrix")
+    X, bc, var, _ = R.read_10x_h5(out, d / "run3.raw.h5")
+    X0, bc0, var0, _ = R.read_10x_mtx(inp, src / "run3/outs/raw_feature_bc_matrix")
     assert (X != X0).nnz == 0 and list(bc) == list(bc0) and list(var.index) == list(var0.index)
 
 
 def test_droplets_stream_in_blocks(tmp_path, monkeypatch):
     """The ARC filter gives the same matrix whatever the block size."""
-    src = make_fixture(tmp_path / "fx", "flat")["flat"] / "arc1/outs/raw_feature_bc_matrix.h5"
-    R.write_droplets(src, tmp_path / "one.h5")
+    root = make_fixture(tmp_path / "fx", "flat")["flat"]
+    src, indir, out = root / "arc1/outs/raw_feature_bc_matrix.h5", InputDir(root), tmp_path / "out"
+    out.mkdir()
+    R.write_droplets(indir, src, out / "one.h5")
     monkeypatch.setattr(R, "CHUNK_BARCODES", 7)
-    R.write_droplets(src, tmp_path / "blocks.h5")
-    a, b = R.read_10x_h5(tmp_path / "one.h5")[0], R.read_10x_h5(tmp_path / "blocks.h5")[0]
+    R.write_droplets(indir, src, out / "blocks.h5")
+    a, b = R.read_10x_h5(InputDir(out), out / "one.h5")[0], R.read_10x_h5(InputDir(out), out / "blocks.h5")[0]
     assert (a != b).nnz == 0
 
 
@@ -208,10 +218,11 @@ def test_sample_sheet_and_suffix_split(fixture_root, tmp_path, monkeypatch):
 
 def test_seurat_v3(tmp_path):
     c = Candidate("rds", DATA / "seurat_v3.rds", {"rds": DATA / "seurat_v3.rds"}, "seurat_v3")
-    reads = R.read_rds(c, DATA, {})
+    reads = R.read_rds(c, InputDir(DATA), {})
     assert [r.sub_id for r in reads] == ["s1", "s2"] and reads[0].meta["seurat"]["assay_class"] == "Assay"
     assert reads[0].adata.shape == (10, 8) and "donor" in reads[0].adata.obs and "orig.ident" not in reads[0].adata.obs
-    v5 = R.read_rds(Candidate("rds", DATA / "seurat_v5_split.rds", {"rds": DATA / "seurat_v5_split.rds"}, "x"), DATA, {})
+    v5 = R.read_rds(Candidate("rds", DATA / "seurat_v5_split.rds", {"rds": DATA / "seurat_v5_split.rds"}, "x"),
+                    InputDir(DATA), {})
     for a, b in zip(reads, v5):
         assert (a.adata.X != b.adata.X).nnz == 0 and list(a.adata.obs_names) == list(b.adata.obs_names)
 
@@ -240,7 +251,7 @@ def test_no_input_exits_1(tmp_path, monkeypatch):
     assert run(tmp_path / "in", tmp_path / "out", monkeypatch) == 1
 
 
-def test_symlink_out_of_the_input_is_not_followed(tmp_path, monkeypatch):
+def test_symlink_out_of_the_input_is_not_followed(tmp_path, monkeypatch, caplog):
     outside = tmp_path / "outside"
     write_mtx(outside / "filtered_feature_bc_matrix", np.ones((3, 2), dtype=np.int32), ["A-1", "B-1", "C-1"],
               ["G1", "G2"], ["ENSG1", "ENSG2"], ["Gene Expression"] * 2)
@@ -251,10 +262,10 @@ def test_symlink_out_of_the_input_is_not_followed(tmp_path, monkeypatch):
     (inp / "deep").mkdir()
     os.symlink(outside, inp / "deep" / "sneaky")          # below the port folder: must stay inside the input
     out = tmp_path / "out"
-    assert run(tmp_path / "in", out, monkeypatch) == 0
+    with caplog.at_level(logging.WARNING):
+        assert run(tmp_path / "in", out, monkeypatch) == 0
     assert set(rows(out / "metadata" / "samples.csv")) == {"s1"}
-    prep = json.loads((out / "metadata" / "prep.json").read_text())
-    assert any(i["path"] == "data/deep/sneaky/" and "outside the input" in i["reason"] for i in prep["ignored"])
+    assert "skipped data/deep/sneaky: resolves outside the input" in caplog.text
 
 
 def test_non_count_h5ad_fails_the_sample(tmp_path, monkeypatch):
@@ -289,3 +300,54 @@ def test_h5_written_is_10x_format(outputs):
     with h5py.File(outputs["linked"] / "droplets" / "run3.raw.h5") as h:
         assert set(h["matrix"]) == {"barcodes", "data", "indices", "indptr", "shape", "features"}
         assert set(h["matrix/features"]) == {"name", "id", "feature_type", "genome", "_all_tag_keys"}
+
+
+def test_source_columns(outputs, fixture_root, tmp_path, monkeypatch):
+    """Label-like source columns are copied; others (clinical fields) only when named in SOURCE_COLUMNS, and
+    their names (never values) are listed in source_columns.csv."""
+    out = outputs["linked"]
+    tab = ad.read_h5ad(out / "cells" / "tab.h5ad")
+    assert "source_cell_type" in tab.obs and "pain_score" not in tab.obs
+    s1 = ad.read_h5ad(out / "cells" / "s1.h5ad")
+    assert "donor" not in s1.obs and "nCount_RNA" not in s1.obs
+    listed = pd.read_csv(out / "metadata" / "source_columns.csv", keep_default_na=False)
+    assert list(listed.columns) == ["sample_id", "column", "copied_as"]
+    by = {(r.sample_id, r.column): r.copied_as for r in listed.itertuples()}
+    assert by[("tab", "cell_type")] == "source_cell_type" and by[("tab", "pain_score")] == ""
+    assert by[("s1", "donor")] == ""
+    assert "7" not in (out / "metadata" / "source_columns.csv").read_text()   # no values
+    o2 = tmp_path / "o2"
+    assert run(fixture_root["flat"], o2, monkeypatch, SOURCE_COLUMNS="pain_score, donor") == 0
+    assert ad.read_h5ad(o2 / "cells" / "tab.h5ad").obs["pain_score"].iloc[0] == 7.0
+    assert "donor" in ad.read_h5ad(o2 / "cells" / "s1.h5ad").obs
+
+
+@pytest.mark.parametrize("sheet", ["oversize", "binary", "no_path"])
+def test_unusable_sample_sheet_exits_cleanly(fixture_root, tmp_path, monkeypatch, sheet):
+    root = tmp_path / "in"
+    root.mkdir()
+    (root / "sam").symlink_to(fixture_root["flat"] / "primary/sub-A/sam-A1")
+    if sheet == "oversize":
+        monkeypatch.setattr(I, "MAX_TABLE_BYTES", 10)
+        (root / "samples.csv").write_text("sample_id,path\nx,sam\n")
+    elif sheet == "binary":
+        (root / "samples.csv").write_bytes(b"\xff\xfe\x00\x81bad")
+    else:                                   # a sheet that is not named samples.csv cannot be SPARC metadata
+        (root / "sheet.csv").write_text("sample_id,where\nx,sam\n")
+    params = {"SAMPLE_SHEET": "sheet.csv"} if sheet == "no_path" else {}
+    assert run(root, tmp_path / "out", monkeypatch, **params) == 1
+
+
+def test_h5ad_with_external_link_is_refused(tmp_path, monkeypatch):
+    inp = tmp_path / "in"
+    inp.mkdir()
+    (tmp_path / "secret.h5").write_bytes(b"")
+    a = ad.AnnData(X=sp.csr_matrix(np.ones((3, 2), dtype=np.int32)), var=pd.DataFrame(index=["A", "B"]))
+    a.write_h5ad(inp / "ok.h5ad")
+    a.write_h5ad(inp / "linked.h5ad")
+    with h5py.File(inp / "linked.h5ad", "a") as h:
+        h["uns/escape"] = h5py.ExternalLink(str(tmp_path / "secret.h5"), "/")
+    out = tmp_path / "out"
+    assert run(inp, out, monkeypatch) == 0
+    prep = json.loads((out / "metadata" / "prep.json").read_text())
+    assert set(prep["samples"]) == {"ok"} and "external link" in prep["skipped"][0]["reason"]

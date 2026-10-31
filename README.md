@@ -34,9 +34,9 @@ with ARC's peaks streamed out in barcode blocks, or converted from MTX).
 | Port | Direction | Placement | What |
 |---|---|---|---|
 | `counts` | input | root | The data folder tree (searched recursively; symlinks followed inside the input), with the optional sample sheet and SPARC `samples` / `subjects` sheets anywhere in it. |
-| `cells` | output | `OUTPUT_DIR/cells/` | `<sample_id>.h5ad` per sample; `provenance.json`, `summary.json`. Link it to `sc-qc` (and, after the later steps, to st-compare's `spatial` input). |
-| `droplets` | output | `OUTPUT_DIR/droplets/` | `<sample_id>.raw.h5` per sample with a raw matrix; `provenance.json`, `summary.json`. |
-| `metadata` | output | `OUTPUT_DIR/metadata/` | `samples.csv`, `samples_full.csv`, `prep.json`, `provenance.json`, `summary.json`. |
+| `cells` | output | `OUTPUT_DIR/cells/` | `<sample_id>.h5ad` per sample; `provenance.json`. Link it to `sc-qc` (and, after the later steps, to st-compare's `spatial` input). |
+| `droplets` | output | `OUTPUT_DIR/droplets/` | `<sample_id>.raw.h5` per sample with a raw matrix; `provenance.json`. |
+| `metadata` | output | `OUTPUT_DIR/metadata/` | `samples.csv`, `samples_full.csv`, `source_columns.csv`, `prep.json`, `provenance.json`, `summary.json`. |
 
 ## Inputs it recognises
 
@@ -46,7 +46,7 @@ with ARC's peaks streamed out in barcode blocks, or converted from MTX).
 | Cell Ranger multi / Flex | `count/sample_filtered_feature_bc_matrix.h5` (or `count/sample_filtered_feature_bc_matrix/`) in `per_sample_outs/<sample>/` or a dataset's `sam-…/count/` | As above; raw from `sample_raw_feature_bc_matrix.h5`. Chemistry `flex` from the h5's `chemistry_description`. |
 | Cell Ranger ARC (Multiome) | `filtered_feature_bc_matrix.h5` with `Gene Expression` and `Peaks` features | Gene Expression only; `atac_present` and the path of `atac_fragments.tsv.gz` recorded in `prep.json` for `atac-prep`. The raw h5 is written without its peaks. Chemistry `multiome`. |
 | Aggregated matrix | any of the above whose barcodes end in `-1`, `-2`, … (`cellranger aggr`, or a dataset's combined matrix such as Discover 465's) | One sample, unless the sample sheet has rows with the same `path` and a `SAMPLE_SUFFIX_COLUMN` value: then each suffix is its own sample (barcodes with an unlisted suffix are dropped and counted). Its raw matrix is not split (no droplets). |
-| AnnData | `*.h5ad` | Only `obs`, `var` and the counts are read, from the first integer-valued of `layers["counts"]`, `X`, `raw.X` (a file without integer counts fails). Ensembl `var_names` are swapped for a symbol column (`feature_name`, `gene_symbols`, …). A file with several `obs["sample_id"]` values is split. The file's own per-cell columns are kept (a column whose name a step writes, such as `cell_type`, becomes `source_cell_type`). |
+| AnnData | `*.h5ad` | Only `obs`, `var` and the counts are read, from the first integer-valued of `layers["counts"]`, `X`, `raw.X` (a file without integer counts fails). Ensembl `var_names` are swapped for a symbol column (`feature_name`, `gene_symbols`, …). A file with several `obs["sample_id"]` values is split. Its label columns are kept (see *Source columns*). |
 | Seurat | `*.rds` holding a Seurat object (v3 / v4 `Assay`, v5 `Assay5` with one `counts` layer or split `counts.<x>` layers) | The `counts` of the `RNA` assay (else the active assay) and `meta.data`; split by `sample_id`, else `orig.ident` when they hold more than one value. See *Seurat files* below. |
 
 Detection is by file and folder names; one sample per Cell Ranger folder (not descended into
@@ -90,11 +90,12 @@ Values are never logged (subject sheets hold clinical fields); logs give counts 
 | `SAMPLE_SUFFIX_COLUMN` | `barcode_suffix` | Sample sheet column that splits an aggregated matrix by barcode suffix. |
 | `METADATA_COLUMNS` | `subject_id,subject_experimental_group,sample_experimental_group,sex,age,species,sample_anatomical_location,laterality` | SPARC columns put on cells and in `samples.csv` (snake_case; names given in any case or spacing are converted). `none` for none. Columns missing from the metadata are skipped; columns empty for every sample are left out. |
 | `CONDITION_COLUMN` | `auto` | Column copied to `condition`; `none` for no condition column. A name that is not a column exits with code 2 and lists the columns. |
+| `SOURCE_COLUMNS` | (empty) | Per-cell columns of an `.h5ad` / Seurat input, by their names in the file, to copy onto cells besides the label columns (see *Source columns*). |
 | `MAX_CELLS_PER_SAMPLE` | `0` | At most this many cells per sample: a seeded random subset, in source order (`uns["pennsieve"]["subsampled_from"]` records the count before). `0` keeps all. Droplets are never subsampled. |
 | `MIN_COUNTS_PER_CELL` | `0` | Drops cells with fewer total counts, before the subsample. Quality filtering proper is sc-qc's. |
 | `ORGANISM` | `auto` | `human`, `mouse` or `rat`; `auto` takes the metadata's `species`, else the 10x genome (`GRCh38`, `GRCm39`, `mRatBN7.2`, …), else the Ensembl id prefix, else upper-case symbols → human; otherwise `unknown` with a warning. |
 | `SEED` | `42` | Seed of the subsample, combined with the `sample_id`. |
-| `THREADS` | `0` | Threads for BLAS / numba; `0` = from the container's CPU quota (2 on Lambda). |
+| `THREADS` | `0` | Threads for BLAS / numba, fixed when the process starts (`safe_inputs.cpu_threads`); `0` = the container's CPU quota, on Lambda the function's vCPUs (about 2 at 3008 MB). |
 
 Bad parameters exit with code 2; no usable input, or every sample failing, exits with 1. A
 sample that fails (an unreadable file, an `.h5ad` without integer counts, an `.rds` that is not
@@ -108,7 +109,7 @@ a Seurat object) is logged, listed in `prep.json → skipped`, and the run goes 
 |---|---|
 | `X` | Raw counts, CSR int32. |
 | `obs_names` | `<sample_id>:<barcode>` (an `.h5ad` this app wrote before keeps its ids). |
-| `obs` | `sample_id`, `total_counts`, `n_genes_by_counts`, `pct_counts_mt`, `pct_counts_ribo`, then `condition`, the sample sheet's columns and the `METADATA_COLUMNS` (categorical; missing values NaN), then the source's own per-cell columns (`.h5ad` / Seurat). Cells in source order. |
+| `obs` | `sample_id`, `total_counts`, `n_genes_by_counts`, `pct_counts_mt`, `pct_counts_ribo`, then `condition`, the sample sheet's columns and the `METADATA_COLUMNS` (categorical; missing values NaN), then the source's label columns (`.h5ad` / Seurat; see *Source columns*). Cells in source order. |
 | `var` | Gene symbols (made unique with `-1`, … suffixes; a warning counts them), `gene_ids`, `feature_types` (`Gene Expression`), `mt` (`MT-`/`mt-`), `ribo` (`RPS`/`RPL`), both case-insensitive. |
 | `uns["pennsieve"]` | `source` (input path), `source_type` (`cellranger`, `cellranger-arc`, `h5ad`, `rds`), `chemistry` when known (`3p`, `5p`, `flex`, `multiome`), `organism`, `prep_version`, `sample_id`, `n_obs_source`, `subsampled_from`. |
 
@@ -128,11 +129,30 @@ how it was decided, `features` (`n_source`, `n_genes`, `dropped` by type), `cell
 (sample / subject matched and how), warnings, seconds; `skipped`; `ignored` (at most 500
 listed, `n_ignored` counts all).
 
-**`provenance.json`** (each port): `app`, `version`, `tools`, `parameters`, `inputs`,
-`started`, `finished`, `samples` (per-sample status and seconds), `skipped`, `peak_rss_mb`
-(the largest of this process and the Seurat reader), `citations` (`{doi, pmid, text}`).
-**`summary.json`** (each port): numbers of samples, cells, samples with droplets, sources,
+**`metadata/source_columns.csv`**: `sample_id, column, copied_as` for every per-cell column of
+an `.h5ad` / Seurat input: the name it has on cells, or empty when it was not copied. Names
+only, never values.
+
+**`provenance.json`** (each port, as in conventions.md): `app`, `version`, `tools`,
+`parameters`, `inputs` (relative paths of the samples, sheet and SPARC files), `started`,
+`finished` (ISO 8601 UTC), `samples` (per sample: status `ok` / `failed` / `skipped` for sheet
+rows matching nothing, error, seconds), `peak_rss_mb` (the larger of this process and the
+Seurat reader), `cgroup_peak_mb` (when readable), `threads`, `citations` (`{doi, pmid, text}`).
+**`metadata/summary.json`**: numbers of samples, cells, samples with droplets, sources,
 organisms, samples per condition, and per sample `n_obs`, `n_genes`, `n_obs_source`.
+
+## Source columns
+
+`.h5ad` and Seurat inputs carry per-cell columns of their own: author cell types and clusters,
+but often also clinical fields per cell (donor age, diagnosis, scores). Only **label columns**
+are copied onto cells: names that, with `.`, `-` and spaces read as `_`, are `orig_ident`,
+`class`, contain `_snn_res_` (Seurat's clusterings), or have one of `leiden`, `louvain`,
+`cluster(s)`, `cell_type(s)` / `celltype(s)`, `annotation(s)`, `subclass(es)`, `subtype(s)`,
+`label(s)` as an `_`-separated part (`seurat_clusters`, `RNA_snn_res.0.5`,
+`predicted.celltype.l2`, `author_cell_type`, `leiden_res1`, …). Any other column is copied only
+when named in `SOURCE_COLUMNS`. A copied column whose name a step writes (`cell_type`, `cluster`,
+`condition`, …) is renamed `source_<name>`. Every source column's name and whether it was
+copied is in `metadata/source_columns.csv` (values are never written there or logged).
 
 ## Seurat files
 
@@ -142,9 +162,13 @@ use R: it parses the file with [rdata](https://github.com/vnmabus/rdata) (pure P
 JOSS-reviewed reader of R's serialization format) and converts only the slots it needs (the
 assay's `counts` and `meta.data`; closures, environments and commands are never touched). The
 conversion runs in a child process (`processor/rds.py`, run with `python -I`, an empty
-environment, a memory cap of 80% of the container's memory via `RLIMIT_AS`, and a 30-minute
-timeout), which writes a temporary `.h5ad` under `/tmp` that the main process reads like any
-other. Tested on objects written by SeuratObject 5.4.0 (R 4.5.1): v5 single layer, v5 split
+environment, an address-space cap (`RLIMIT_AS`) of the container's memory less the main
+process's resident memory and a 256 MiB margin, but at least 60% of the container (address space
+runs ahead of resident memory), so it fails with a MemoryError instead of the container being
+killed, and a 30-minute timeout), which writes a temporary gzip-compressed
+`.h5ad` under `/tmp` that the main process reads like any other. On Lambda `/tmp` is the
+function's ephemeral storage, 512 MB unless the function is given more: a Seurat object whose
+counts do not fit there fails that sample; run large `.rds` inputs on the standard runtime. Tested on objects written by SeuratObject 5.4.0 (R 4.5.1): v5 single layer, v5 split
 layers, v3 assay, a 20 000 × 20 000 object with reductions, closures and environments in `misc`
 (parsed in 1.8 s, 1.6 GB peak), and an xz-compressed file. `SingleCellExperiment` and other R
 classes are refused. A Seurat `SCT` assay is not raw counts: when an object has no `RNA` assay
@@ -160,16 +184,17 @@ contended), peak RSS from the process, cgroup peak from `memory.peak` (includes 
 
 | Demo | Samples | Nuclei | Largest sample | Time | Peak RSS | cgroup peak |
 |---|---|---|---|---|---|---|
-| Discover 475 (DRG C2, 10x Flex) | 12 | 67 902 | 21 553 nuclei, 45 M non-zeros (MTX, 36 s) | 63 s | 1.65 GB | 1.77 GB |
-| Discover 480 (DRG atlas, 10x Flex), the 8 samples downloaded | 8 | 72 178 | 27 745 nuclei, 78 M non-zeros (12 s; 1.85 GB peak RSS run alone) | 39 s | 1.93 GB | 2.34 GB |
+| Discover 475 (DRG C2, 10x Flex) | 12 | 67 902 | 21 553 nuclei, 45 M non-zeros (MTX) | 40 s | 1.66 GB | 1.98 GB |
+| Discover 480 (DRG atlas, 10x Flex) | 42 | 384 213 | 29 374 nuclei, 94 M non-zeros | 179 s | 2.20 GB | 3.01 GB (the limit: reclaimable page cache; no OOM events) |
 
 Memory follows the largest single sample: about 20 bytes per non-zero plus ~0.4 GB for Python
 and the libraries (an MTX folder costs more than an `.h5`, since SciPy's reader parses the text
-in one go). A typical 10x sample (≤ 30 000 nuclei × ≤ 2 500 genes per nucleus) fits Lambda's
+in one go). A 10x sample up to about 100 M non-zeros (measured: 94 M, 2.20 GB) fits Lambda's
 3008 MB; larger samples or a whole-atlas `.h5ad` / `.rds` need the standard runtime with more
-memory, and Lambda stops a run after 15 minutes (about 150 typical samples). A Seurat file
-needs roughly 80 bytes per non-zero in the reader process (1.6 GB for 20 M non-zeros), and its
-temporary `.h5ad` must fit Lambda's `/tmp`. Writing the droplets is a file copy for count and
+memory, and Lambda stops a run after 15 minutes (an estimate of about 150 samples per Lambda run,
+extrapolated from the 3–5 s per sample measured on the two demos; not measured on Lambda). A
+Seurat file needs roughly 80 bytes per non-zero in the reader process (1.6 GB measured for 20 M
+non-zeros), and its temporary `.h5ad` must fit Lambda's `/tmp` (see *Seurat files*). Writing the droplets is a file copy for count and
 Flex outputs.
 
 ## Science and deviations from best practice
@@ -191,8 +216,10 @@ for runs that need it.
   ids, a 10x genome name or a `species` column come out `unknown`: set `ORGANISM`.
 - The SPARC join needs the dataset's `sam-` / `sub-` folders or sample ids equal to the SPARC
   ids; a sample staged without them (files side by side) joins only by `sample_id`.
-- Gene sets can differ between samples (e.g. the Flex probe sets of Cell Ranger 7.1 and 8.0
-  give 18 082 vs 18 099 genes in Discover 475); later steps use the genes shared by all.
+- Gene sets can differ between samples. Observed in the demos (as the files carry them): samples
+  written by Cell Ranger 7.1.0 (and 2 Discover 480 samples whose h5 reports software version
+  `2022.0712.1`) have 18 082 genes, those written by 8.0.1 have 18 099 (Discover 475: 8 and 4
+  samples; Discover 480: 15 and 27). Later steps use the genes shared by all.
 - An aggregated matrix split by barcode suffix gets no droplets; `.h5ad` and Seurat inputs
   never have droplets.
 - Seurat: only the counts and `meta.data` are read (no reductions, graphs or images).
@@ -206,18 +233,26 @@ make fixture PYTHON=.venv/bin/python   # data/fixture/{linked,flat}/
 make run PYTHON=.venv/bin/python       # Docker over data/fixture/linked/ -> data/output/
 ```
 
-The fixture (`tests/make_fixture.py`) has one tiny sample per supported layout: SPARC sheets
+The fixture (`tests/make_fixture.py`) is given in two layouts: flat, and the platform's real
+link layout (a real `counts/` port folder whose entries are symlinks into a sibling upstream
+folder). It has one tiny sample per supported layout: SPARC sheets
 (clashing, merged, empty and clinical columns) with Flex `sam-`/`sub-` folders and a raw-only
 folder, an ARC sample with peaks, a mouse Cell Ranger count sample as MTX folders, an aggregated
-MTX with two barcode suffixes, an `.h5ad` with Ensembl ids and counts in a layer, an `.h5ad`
+MTX with two barcode suffixes, an `.h5ad` with Ensembl ids, counts in a layer, a label and a
+clinical column, an `.h5ad`
 with two samples and counts in `raw.X`, a Seurat v5 object with split layers and a bare
 `dgCMatrix` (which must fail). The Seurat files in `tests/data/` were written by
-`tests/data/make_rds.R` with SeuratObject. See `sample-input/README.md` for the demo data.
+`tests/data/make_rds.R` with SeuratObject. The tests also cover a deeper symlink that leaves the
+input, an `.h5ad` with an HDF5 external link (refused), and oversized, binary and malformed
+sample sheets (clean exit 1). `processor/safe_inputs.py` is vendored unchanged from
+`workflow-single-cell/shared/` (check with its `scripts/check-shared.sh`). See
+`sample-input/README.md` for the demo data.
 
 ## Licences
 
-Apache-2.0 for this app's code (`LICENSE`). Bundled components are BSD / MIT / Apache / MPL /
-PSF licensed; nothing GPL is in the image, and R is not bundled (see `THIRD_PARTY.md`). The demo
+Apache-2.0 for this app's code (`LICENSE`). The bundled Python packages are BSD / MIT / Apache /
+MPL / PSF licensed: no GPL Python packages (the Debian base layer contains GPL system tools), and
+R is not bundled (see `THIRD_PARTY.md`). The demo
 datasets are CC BY 4.0.
 
 ## Credits

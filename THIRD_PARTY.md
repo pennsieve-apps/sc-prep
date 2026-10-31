@@ -3,8 +3,9 @@
 This app is Apache-2.0 (see `LICENSE`). The image it builds contains the following
 third-party components, installed from PyPI at the versions pinned in `requirements.txt`
 (licences read from each package's own licence file and metadata in the built image).
-All are permissively licensed (BSD, MIT, Apache-2.0, MPL-2.0, PSF); nothing GPL is in the
-image. R is not in the image: Seurat `.rds` files are parsed by rdata (pure Python).
+All are permissively licensed (BSD, MIT, Apache-2.0, MPL-2.0, PSF): no GPL Python packages. The
+Debian base layer contains GPL system tools (e.g. bash, coreutils) under their own licences. R is
+not in the image: Seurat `.rds` files are parsed by rdata (pure Python).
 
 | Component | Version | What it does here | Licence | Source |
 |---|---|---|---|---|

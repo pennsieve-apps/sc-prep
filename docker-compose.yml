@@ -4,13 +4,16 @@ services:
       context: .
       dockerfile: Dockerfile
     platform: linux/amd64
-    mem_limit: 1g
+    mem_limit: 2g
     network_mode: none
     read_only: true
     tmpfs:
       - /tmp
     env_file:
       - dev.env
+    environment:
+      INPUT_DIR: /data/fixture/linked
     volumes:
-      - ./data/fixture/linked:/data/input:ro
+      # the whole fixture, so the port folder's links into the sibling upstream/ folder resolve
+      - ./data/fixture:/data/fixture:ro
       - ./data/output:/data/output

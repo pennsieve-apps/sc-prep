@@ -43,12 +43,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ORGANISMS = ("auto", "human", "mouse", "rat")
 CONDITION_AUTO = ("condition", "subject_experimental_group", "sample_experimental_group")
 CITATIONS = [
-    {"doi": "10.1186/s13059-017-1382-0", "pmid": "29409532", "text": "Wolf et al. Genome Biology 2018 (Scanpy)"},
-    {"doi": "10.21105/joss.04371", "text": "Virshup et al. Journal of Open Source Software 2024 (anndata)"},
-    {"doi": "10.1038/s41576-023-00586-w", "pmid": "37002403",
-     "text": "Heumos et al. Nature Reviews Genetics 2023 (single-cell best practices)"},
+    {"doi": "10.1186/s13059-017-1382-0", "pmid": "29409532", "text": "Wolf FA et al. Genome Biol 2018"},
+    {"doi": "10.21105/joss.04371", "text": "Virshup I et al. J Open Source Softw 2024"},
+    {"doi": "10.1038/s41576-023-00586-w", "pmid": "37002403", "text": "Heumos L et al. Nat Rev Genet 2023"},
 ]
-RDS_CITATION = {"doi": "10.21105/joss.07540", "text": "Ramos-Carreño and Rossi. Journal of Open Source Software 2024 (rdata)"}
+RDS_CITATION = {"doi": "10.21105/joss.07540", "text": "Ramos-Carreño C et al. J Open Source Softw 2024"}
 
 DEFAULTS = {
     "SAMPLE_SHEET": "samples.csv",
@@ -56,6 +55,7 @@ DEFAULTS = {
     "METADATA_COLUMNS": "subject_id,subject_experimental_group,sample_experimental_group,sex,age,species,"
                         "sample_anatomical_location,laterality",
     "CONDITION_COLUMN": "auto",
+    "SOURCE_COLUMNS": "",
     "MAX_CELLS_PER_SAMPLE": "0",
     "MIN_COUNTS_PER_CELL": "0",
     "ORGANISM": "auto",
@@ -73,11 +73,13 @@ def read_parameters(env=os.environ) -> dict:
     from processor.sparc import snake
 
     raw = {k: (env.get(k) if env.get(k) not in (None, "") else v) for k, v in DEFAULTS.items()}
+    p_source = [c.strip() for c in raw["SOURCE_COLUMNS"].split(",") if c.strip()]
     p: dict = {k: raw[k].strip() for k in ("SAMPLE_SHEET", "SAMPLE_SUFFIX_COLUMN", "CONDITION_COLUMN")}
     if "/" in p["SAMPLE_SHEET"] or p["SAMPLE_SHEET"] in (".", ".."):
         raise ParameterError(f"SAMPLE_SHEET is a file name, not a path: {p['SAMPLE_SHEET']!r}")
     cols = raw["METADATA_COLUMNS"].strip()
     p["METADATA_COLUMNS"] = [] if cols.lower() == "none" else list(dict.fromkeys(snake(c) for c in cols.split(",") if c.strip()))
+    p["SOURCE_COLUMNS"] = list(dict.fromkeys(p_source))
     p["ORGANISM"] = raw["ORGANISM"].strip().lower()
     if p["ORGANISM"] not in ORGANISMS:
         raise ParameterError(f"ORGANISM must be one of {', '.join(ORGANISMS)}, got {raw['ORGANISM']!r}")
@@ -108,12 +110,22 @@ def tool_versions() -> dict[str, str]:
     return out
 
 
-def peak_rss_mb() -> float | None:
+def peak_rss_mb() -> float:
+    """The larger peak RSS of this process and its children (the Seurat reader)."""
     import resource
 
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    child = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
-    return round(max(peak, child) / (1024 * 1024 if sys.platform == "darwin" else 1024), 1)
+    peak = max(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)
+    return round(peak / (1024 * 1024 if sys.platform == "darwin" else 1024), 1)
+
+
+def cgroup_peak_mb() -> float | None:
+    """The container's peak memory (cgroup v2 memory.peak, v1 max_usage_in_bytes; includes page cache)."""
+    for f in ("/sys/fs/cgroup/memory.peak", "/sys/fs/cgroup/memory/memory.max_usage_in_bytes"):
+        try:
+            return round(int(open(f).read()) / 2**20, 1)
+        except (OSError, ValueError):
+            pass
+    return None
 
 
 def write_csv(path: Path, header: list[str], rows: list[dict]) -> None:
@@ -157,18 +169,20 @@ def main() -> int:
     except ParameterError as exc:
         log.error("bad parameter: %s", exc)
         return 2
-    n_threads = threads.configure(str(params["THREADS"]))
+    n_threads = threads.THREADS     # fixed at start-up, before numpy was imported (see processor/threads.py)
 
     from processor import contract as C
     from processor import inputs as I
     from processor import readers as R
     from processor import sparc as S
+    from processor.safe_inputs import InputDir
 
     app_version = version_of(REPO_ROOT)
-    rel = lambda p: I.rel(p, input_dir)  # noqa: E731
+    indir = InputDir(input_dir)
+    rel = indir.rel
 
     # 1. what is there
-    found = I.walk(input_dir, params["SAMPLE_SHEET"])
+    found = I.walk(indir, params["SAMPLE_SHEET"])
     log.info("input: %d files, %d input(s) detected (%s), sample sheet: %s, SPARC: %s, threads %d",
              found.n_files, len(found.candidates),
              ", ".join(f"{k} x{v}" for k, v in sorted(Counter(c.source for c in found.candidates).items())) or "none",
@@ -179,12 +193,18 @@ def main() -> int:
                   "; ".join(f"{i['path']}: {i['reason']}" for i in found.ignored[:10]) or "nothing")
         return 1
     try:
-        sheet = I.read_sheet(found.sheet, params["SAMPLE_SUFFIX_COLUMN"])
-        sparc = S.read_sparc(found.sparc, input_dir)
-    except (ValueError, OSError, UnicodeDecodeError) as exc:
+        # a SPARC samples.csv (no `path` column) is SPARC metadata, not the sample sheet
+        if found.sheet is not None and found.sheet == found.sparc.get("samples"):
+            if "path" in I.read_table(indir, found.sheet).columns:
+                del found.sparc["samples"]
+            else:
+                found.sheet = None
+        sheet = I.read_sheet(indir, found.sheet, params["SAMPLE_SUFFIX_COLUMN"])
+        sparc = S.read_sparc(indir, found.sparc)
+    except (ValueError, OSError, RuntimeError) as exc:     # UnsafeInput, UnicodeDecodeError are ValueErrors
         log.error("cannot use a metadata table: %s", exc)
         return 1
-    sheet_errors = I.assign_identities(found.candidates, sheet, input_dir, params["SAMPLE_SUFFIX_COLUMN"])
+    sheet_errors = I.assign_identities(found.candidates, sheet, indir, params["SAMPLE_SUFFIX_COLUMN"])
     skipped: list[dict] = []
     for e in sheet_errors:
         log.error("sample sheet row %s (path %s): %s", e["sample_id"] or "?", e["path"], e["reason"])
@@ -192,8 +212,8 @@ def main() -> int:
     if sheet.path:
         for c in found.candidates:
             if c.sheet_row is None and not c.suffix_rows:
-                log.warning("%s: not in %s; ignored", c.rel(input_dir), sheet.path.name)
-                found.ignored.append({"path": c.rel(input_dir), "reason": f"{c.source} input not in the sample sheet"})
+                log.warning("%s: not in %s; ignored", rel(c.path), sheet.path.name)
+                found.ignored.append({"path": rel(c.path), "reason": f"{c.source} input not in the sample sheet"})
                 found.n_ignored += 1
         found.candidates = [c for c in found.candidates if c.sheet_row is not None or c.suffix_rows]
 
@@ -217,6 +237,7 @@ def main() -> int:
         return values, match, warnings
 
     cells_dir, drop_dir, meta_dir = (output_dir / n for n in ("cells", "droplets", "metadata"))
+    source_rows: list[dict] = []
     for d in (cells_dir, drop_dir, meta_dir):
         d.mkdir(parents=True, exist_ok=True)
 
@@ -230,20 +251,20 @@ def main() -> int:
         log.error("%s (%s): FAILED: %s", sid, src, exc)
         skipped.append({"sample_id": sid, "path": src, "reason": f"{type(exc).__name__}: {exc}"})
         prov_samples.append({"sample_id": sid, "input": src, "source": source, "status": "failed",
-                             "error": str(exc), "seconds": round(time.monotonic() - t0, 2)})
+                             "error": f"{type(exc).__name__}: {exc}", "seconds": round(time.monotonic() - t0, 2)})
 
     for c in found.candidates:
         t0 = time.monotonic()
-        src = c.rel(input_dir)
+        src = rel(c.path)
         for note in c.notes:
             log.warning("%s: %s", src, note)
         try:
-            reads = R.READERS[c.source](c, input_dir, params)
+            reads = R.READERS[c.source](c, indir, params)
         except Exception as exc:  # noqa: BLE001 - one sample's failure must not sink the run
             fail(c.sample_id, src, c.source, exc, t0)
             continue
         for r in reads:
-            t1 = time.monotonic()
+            t1 = t0 if len(reads) == 1 else time.monotonic()   # a split input's read time is not attributed
             sid = c.sample_id if r.sub_id is None else r.sub_id
             row = c.suffix_rows.get(r.meta.get("barcode_suffix")) if r.meta.get("barcode_suffix") else c.sheet_row
             if sid in written:
@@ -255,7 +276,7 @@ def main() -> int:
                 adata.write_h5ad(cells_dir / f"{sid}.h5ad", compression="gzip")
                 drop = None
                 if "raw" in c.files and r.sub_id is None:
-                    drop = R.write_droplets(c.files["raw"], drop_dir / f"{sid}.raw.h5")
+                    drop = R.write_droplets(indir, c.files["raw"], drop_dir / f"{sid}.raw.h5")
                     drop.update({"from": rel(c.files["raw"]), "output": f"droplets/{sid}.raw.h5"})
             except Exception as exc:  # noqa: BLE001
                 fail(sid, src, c.source, exc, t1)
@@ -264,7 +285,9 @@ def main() -> int:
             info["warnings"] += sparc_warnings
             if drop is None:
                 info["warnings"].append("no raw matrix: sc-qc skips ambient RNA removal for this sample")
-            seconds = round(time.monotonic() - t1 + (t1 - t0 if r is reads[0] else 0), 2)
+            seconds = round(time.monotonic() - t1, 2)
+            source_rows += [{"sample_id": sid, "column": col, "copied_as": name or ""}
+                            for col, name in info["source_columns"].items()]
             info.update({"input": src, "output": f"cells/{sid}.h5ad", "droplets": drop, "sparc": match,
                          "in_sample_sheet": (row is not None) if sheet.path else None, "notes": list(c.notes),
                          "seconds": seconds})
@@ -295,11 +318,11 @@ def main() -> int:
     write_csv(meta_dir / "samples.csv", required + filled(obs_columns), rows)
     full_cols = list(dict.fromkeys((["condition"] if condition_from else []) + sheet.columns + sparc.columns))
     write_csv(meta_dir / "samples_full.csv", required + filled(full_cols), rows)
+    write_csv(meta_dir / "source_columns.csv", ["sample_id", "column", "copied_as"], source_rows)
     finished = datetime.now(timezone.utc)
-    common = {"app": APP_NAME, "version": app_version, "finished": finished.isoformat(timespec="seconds"),
-              "parameters": params}
+    common = {"app": APP_NAME, "version": app_version, "finished": finished.isoformat(timespec="seconds")}
     write_json(meta_dir / "prep.json", {
-        **common, "sample_sheet": rel(found.sheet) if found.sheet else None, "sample_sheet_columns": sheet.columns,
+        **common, "parameters": params, "sample_sheet": rel(found.sheet) if found.sheet else None, "sample_sheet_columns": sheet.columns,
         "sparc": sparc.files, "sparc_columns": sparc.columns, "condition_from": condition_from,
         "columns_on_cells": obs_columns, "samples": prep_samples, "skipped": skipped,
         "ignored": found.ignored, "n_ignored": found.n_ignored})
@@ -312,20 +335,23 @@ def main() -> int:
                "condition_from": condition_from, "samples_per_condition": dict(conditions),
                "samples": [{"sample_id": r["sample_id"], "n_obs": r["n_obs"], "n_genes": r["n_genes"],
                             "n_obs_source": prep_samples[r["sample_id"]]["cells"]["n_source"]} for r in rows]}
+    # sheet rows that matched nothing are listed with the samples, status "skipped"
+    prov_samples += [{"sample_id": e["sample_id"], "input": e["path"], "status": "skipped", "error": e["reason"]}
+                     for e in sheet_errors]
     provenance = {
         "app": APP_NAME, "version": app_version, "tools": tool_versions(), "parameters": params,
-        "inputs": {"samples": [{"path": c.rel(input_dir), "source": c.source} for c in found.candidates],
-                   "sample_sheet": rel(found.sheet) if found.sheet else None, "sparc": sparc.files,
-                   "n_files": found.n_files, "n_ignored": found.n_ignored},
+        "inputs": [rel(c.path) for c in found.candidates] + ([rel(found.sheet)] if found.sheet else [])
+        + [rel(p) for p in found.sparc.values()],
         "started": started.isoformat(timespec="seconds"), "finished": finished.isoformat(timespec="seconds"),
-        "seconds": round(time.monotonic() - t_start, 2), "threads": n_threads,
-        "samples": prov_samples, "skipped": skipped, "n_ok": len(rows), "n_failed": len(skipped),
-        "peak_rss_mb": peak_rss_mb(),
+        "samples": prov_samples, "peak_rss_mb": peak_rss_mb(), "threads": n_threads,
         "citations": CITATIONS + ([RDS_CITATION] if any(r["source"] == "rds" for r in rows) else []),
     }
+    cgroup_peak = cgroup_peak_mb()
+    if cgroup_peak is not None:
+        provenance["cgroup_peak_mb"] = cgroup_peak
     for d in (cells_dir, drop_dir, meta_dir):
         write_json(d / "provenance.json", provenance)
-        write_json(d / "summary.json", summary)
+    write_json(meta_dir / "summary.json", summary)
     log.info("%d sample(s) written (%d cells, %d with droplets), %d skipped, peak RSS %s MB, %.1fs",
              len(rows), summary["n_cells"], summary["n_with_droplets"], len(skipped), provenance["peak_rss_mb"],
              time.monotonic() - t_start)

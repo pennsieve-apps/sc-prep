@@ -1,8 +1,9 @@
 """
 The Lambda runtime. A lambda step's payload carries inputDir, outputDir and the step's parameters
 as fields (where a container gets them as environment variables); the handler sets those
-variables and runs the same main(), so both runtimes write the same outputs. Lambda exposes no
-cgroup CPU quota, so THREADS 0 means 2 (about what 3008 MB gets).
+variables and runs the same main(), so both runtimes write the same outputs. The thread count is
+fixed when the function starts (processor/threads.py: the function's vCPUs, about 2 at 3008 MB);
+an event's THREADS does not change it.
 """
 import json
 import os

@@ -13,7 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from processor.inputs import read_table, rel
+from processor.inputs import read_table
+from processor.safe_inputs import InputDir
 
 KEYS = ("sample_id", "subject_id")
 
@@ -54,16 +55,16 @@ class Sparc:
         return self.samples is not None or self.subjects is not None
 
 
-def read_sparc(paths: dict[str, Path], root: Path) -> Sparc:
-    sp = Sparc(files={k: rel(p, root) for k, p in paths.items()})
+def read_sparc(indir: InputDir, paths: dict[str, Path]) -> Sparc:
+    sp = Sparc(files={k: indir.rel(p) for k, p in paths.items()})
     if "samples" in paths:
-        df = _snake_frame(read_table(paths["samples"]))
+        df = _snake_frame(read_table(indir, paths["samples"]))
         if "sample_id" not in df.columns:
             raise ValueError(f"{paths['samples'].name} has no 'sample id' column")
         sp.samples = df
         sp.sample_columns = [c for c in df.columns if c != "sample_id"]
     if "subjects" in paths:
-        df = _snake_frame(read_table(paths["subjects"]))
+        df = _snake_frame(read_table(indir, paths["subjects"]))
         if "subject_id" not in df.columns:
             raise ValueError(f"{paths['subjects'].name} has no 'subject id' column")
         sp.subjects = df

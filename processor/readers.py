@@ -23,12 +23,15 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
-from processor.inputs import Candidate, rel, sanitise
+from processor.inputs import Candidate, sanitise
+from processor.safe_inputs import InputDir
 
 GEX = "Gene Expression"
 SYMBOL_COLUMNS = ("feature_name", "gene_symbols", "gene_symbol", "gene_name", "gene_names", "symbol")
 RDS_TIMEOUT_S = 1800
 CHUNK_BARCODES = 50_000
+MAX_FEATURES_TSV = 100 * 2**20       # features.tsv(.gz), uncompressed
+MAX_BARCODES_TSV = 512 * 2**20       # barcodes.tsv(.gz), uncompressed (a raw matrix lists millions)
 
 
 @dataclass
@@ -41,9 +44,10 @@ class Read:
 
 # --- 10x matrices -----------------------------------------------------------------------------
 
-def read_10x_h5(path: Path) -> tuple[sp.csr_matrix, np.ndarray, pd.DataFrame, dict]:
+def read_10x_h5(indir: InputDir, path: Path) -> tuple[sp.csr_matrix, np.ndarray, pd.DataFrame, dict]:
     """A 10x HDF5 feature-barcode matrix (format 2+) as (CSR barcodes x features, barcodes, var, file attributes)."""
-    with h5py.File(path, "r") as h:
+    indir.check_h5(path)
+    with h5py.File(indir.check(path), "r") as h:
         if "matrix" not in h:
             raise ValueError(f"{path.name}: not a 10x HDF5 matrix (no 'matrix' group)")
         m = h["matrix"]
@@ -64,21 +68,24 @@ def read_10x_h5(path: Path) -> tuple[sp.csr_matrix, np.ndarray, pd.DataFrame, di
     return csc.T.tocsr(copy=False), barcodes, var, attrs
 
 
-def read_10x_mtx(folder: Path) -> tuple[sp.csr_matrix, np.ndarray, pd.DataFrame, dict]:
+def read_10x_mtx(indir: InputDir, folder: Path) -> tuple[sp.csr_matrix, np.ndarray, pd.DataFrame, dict]:
     """A 10x MTX folder (matrix.mtx[.gz], features.tsv[.gz] or genes.tsv[.gz], barcodes.tsv[.gz]), as read_10x_h5."""
     from scipy.io import mmread
 
     def pick(*names: str) -> Path:
         for n in names:
-            if (folder / n).is_file():
+            if (folder / n).is_file() and indir.inside(folder / n):
                 return folder / n
         raise ValueError(f"{folder.name}: no {names[0]}")
 
     mtx = pick("matrix.mtx.gz", "matrix.mtx")
-    with (gzip.open if mtx.suffix == ".gz" else open)(mtx, "rb") as fh:
-        X = sp.csr_matrix(mmread(fh, spmatrix=False).T)
-    feats = pd.read_csv(pick("features.tsv.gz", "features.tsv", "genes.tsv.gz", "genes.tsv"), sep="\t", header=None, dtype=str)
-    barcodes = pd.read_csv(pick("barcodes.tsv.gz", "barcodes.tsv"), sep="\t", header=None, dtype=str)[0].to_numpy()
+    with indir.open_checked(mtx) as raw:
+        with (gzip.GzipFile(fileobj=raw) if mtx.suffix == ".gz" else raw) as fh:
+            X = sp.csr_matrix(mmread(fh, spmatrix=False).T)
+    feats = indir.read_csv(pick("features.tsv.gz", "features.tsv", "genes.tsv.gz", "genes.tsv"), MAX_FEATURES_TSV,
+                           sep="\t", header=None, dtype=str)
+    barcodes = indir.read_csv(pick("barcodes.tsv.gz", "barcodes.tsv"), MAX_BARCODES_TSV, sep="\t", header=None,
+                              dtype=str)[0].to_numpy()
     names = feats[1].to_numpy() if feats.shape[1] > 1 else feats[0].to_numpy()
     var = pd.DataFrame({"gene_ids": feats[0].to_numpy(),
                         "feature_types": feats[2].to_numpy() if feats.shape[1] > 2 else GEX}, index=pd.Index(names))
@@ -87,8 +94,8 @@ def read_10x_mtx(folder: Path) -> tuple[sp.csr_matrix, np.ndarray, pd.DataFrame,
     return X, barcodes, var, {}
 
 
-def read_10x(path: Path):
-    return read_10x_mtx(path) if path.is_dir() else read_10x_h5(path)
+def read_10x(indir: InputDir, path: Path):
+    return read_10x_mtx(indir, path) if path.is_dir() else read_10x_h5(indir, path)
 
 
 def chemistry_of(description: str, feature_types: set[str]) -> str | None:
@@ -104,17 +111,17 @@ def chemistry_of(description: str, feature_types: set[str]) -> str | None:
     return None
 
 
-def read_cellranger(c: Candidate, root: Path, params: dict) -> list[Read]:
+def read_cellranger(c: Candidate, indir: InputDir, params: dict) -> list[Read]:
     """Cell Ranger count / multi (Flex) / ARC: the filtered matrix; an aggregated matrix is split by barcode suffix
     when the sample sheet maps suffixes to samples."""
-    X, barcodes, var, attrs = read_10x(c.files["matrix"])
+    X, barcodes, var, attrs = read_10x(indir, c.files["matrix"])
     types = set(var["feature_types"].astype(str))
     meta = {"source": "cellranger-arc" if "Peaks" in types else "cellranger",
-            "files": {k: rel(v, root) for k, v in c.files.items()},
+            "files": {k: indir.rel(v) for k, v in c.files.items()},
             "chemistry": chemistry_of(attrs.get("chemistry_description", ""), types),
             "software_version": attrs.get("software_version"),
             "genome": sorted(set(var["genome"])) if "genome" in var else None,
-            "atac_present": "Peaks" in types, "atac_fragments": rel(c.files["atac_fragments"], root)
+            "atac_present": "Peaks" in types, "atac_fragments": indir.rel(c.files["atac_fragments"])
             if "atac_fragments" in c.files else None}
     var = var.drop(columns=["genome"], errors="ignore")
     if not c.suffix_rows:
@@ -127,7 +134,7 @@ def read_cellranger(c: Candidate, root: Path, params: dict) -> list[Read]:
                           {**meta, "barcode_suffix": suffix}, sub_id=row["sample_id"] or sanitise(f"{c.default_id}_{suffix}")))
     unmapped = int(np.isin(suffixes, list(c.suffix_rows), invert=True).sum())
     if unmapped:
-        reads[0].warnings.append(f"{unmapped} barcodes of {rel(c.files['matrix'], root)} have a suffix the sample "
+        reads[0].warnings.append(f"{unmapped} barcodes of {indir.rel(c.files['matrix'])} have a suffix the sample "
                                  "sheet does not map; not used")
     return reads
 
@@ -158,9 +165,9 @@ def _symbols(var: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
     return var[["gene_ids", "feature_types"]].astype(str), swapped
 
 
-def read_h5ad_file(path: Path) -> tuple[ad.AnnData, str, list[str]]:
+def read_h5ad_file(path: str | Path) -> tuple[ad.AnnData, str, list[str]]:
     """Counts from layers['counts'], else X, else raw.X (the first integer-valued one), with obs and var. Only these
-    elements are read (not the whole file)."""
+    elements are read (not the whole file). `path` is checked already (InputDir.check / check_h5)."""
     warnings: list[str] = []
     with h5py.File(path, "r") as h:
         obs = ad.io.read_elem(h["obs"])
@@ -206,35 +213,50 @@ def _reads_from_anndata(a: ad.AnnData, meta: dict, warnings: list[str], split_co
     return [Read(p, meta, sub_id=sid, warnings=list(warnings)) for sid, p in parts]
 
 
-def read_h5ad(c: Candidate, root: Path, params: dict) -> list[Read]:
-    a, slot, warnings = read_h5ad_file(c.files["h5ad"])
-    meta = {"source": "h5ad", "files": {"h5ad": rel(c.files["h5ad"], root)}, "counts_from": slot}
+def read_h5ad(c: Candidate, indir: InputDir, params: dict) -> list[Read]:
+    indir.check_h5(c.files["h5ad"])
+    a, slot, warnings = read_h5ad_file(indir.check(c.files["h5ad"]))
+    meta = {"source": "h5ad", "files": {"h5ad": indir.rel(c.files["h5ad"])}, "counts_from": slot}
     return _reads_from_anndata(a, meta, warnings, ("sample_id",))
 
 
-def memory_limit_bytes() -> int:
-    """80% of the container's memory (cgroup v2 / v1 limit, the Lambda function's size, else physical memory)."""
+def container_memory_bytes() -> int:
+    """The container's memory: the cgroup v2 / v1 limit, the Lambda function's size, else physical memory."""
     for f in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
         try:
             v = open(f).read().strip()
             if v.isdigit() and int(v) < 2**60:
-                return int(int(v) * 0.8)
+                return int(v)
         except OSError:
             pass
     if os.environ.get("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "").isdigit():
-        return int(int(os.environ["AWS_LAMBDA_FUNCTION_MEMORY_SIZE"]) * 2**20 * 0.8)
-    return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") * 0.8)
+        return int(os.environ["AWS_LAMBDA_FUNCTION_MEMORY_SIZE"]) * 2**20
+    return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
 
 
-def read_rds(c: Candidate, root: Path, params: dict) -> list[Read]:
-    """A Seurat object, converted by processor/rds.py in a child process (isolated, memory-capped, timed out)."""
+def rds_memory_limit_bytes() -> int:
+    """The Seurat reader's address-space cap: the container's memory less what this process holds now and a
+    256 MiB margin, so the child fails cleanly (MemoryError) before the container is killed; at least 60% of the
+    container (address space runs ahead of resident memory, e.g. by library mappings and under emulation)."""
+    try:
+        rss = int(open("/proc/self/statm").read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+    except OSError:
+        rss = 0
+    total = container_memory_bytes()
+    return max(int(total * 0.6), total - rss - 256 * 2**20)
+
+
+def read_rds(c: Candidate, indir: InputDir, params: dict) -> list[Read]:
+    """A Seurat object, converted by processor/rds.py in a child process (isolated, memory-capped, timed out) into a
+    temporary gzip-compressed .h5ad under /tmp (on Lambda, the function's ephemeral storage: 512 MB by default)."""
+    src = indir.check(c.files["rds"])
     with tempfile.TemporaryDirectory(dir="/tmp" if os.path.isdir("/tmp") else None) as tmp:
         out = Path(tmp) / "counts.h5ad"
         env = {"PATH": "/usr/bin:/bin", "HOME": tmp, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1",
                "MKL_NUM_THREADS": "1", "NUMBA_NUM_THREADS": "1", "NUMBA_CACHE_DIR": tmp}
         try:
             proc = subprocess.run([sys.executable, "-I", "-W", "ignore", str(Path(__file__).with_name("rds.py")),
-                                   str(c.files["rds"]), str(out), str(memory_limit_bytes())],
+                                   src, str(out), str(rds_memory_limit_bytes())],
                                   env=env, cwd=tmp, capture_output=True, text=True, timeout=RDS_TIMEOUT_S)
         except subprocess.TimeoutExpired as exc:
             raise ValueError(f"reading the .rds took longer than {RDS_TIMEOUT_S} s") from exc
@@ -245,7 +267,7 @@ def read_rds(c: Candidate, root: Path, params: dict) -> list[Read]:
         a, slot, warnings = read_h5ad_file(out)
     if info["assay"] != info["active_assay"]:
         warnings.append(f"read assay {info['assay']}; the object's active assay is {info['active_assay']}")
-    meta = {"source": "rds", "files": {"rds": rel(c.files["rds"], root)}, "seurat": info}
+    meta = {"source": "rds", "files": {"rds": indir.rel(c.files["rds"])}, "seurat": info}
     return _reads_from_anndata(a, meta, warnings, ("sample_id", "orig.ident"))
 
 
@@ -284,17 +306,19 @@ def _write_10x_h5(dst: Path, barcodes: np.ndarray, var: pd.DataFrame, blocks, at
     return n
 
 
-def write_droplets(raw: Path, dst: Path) -> dict:
+def write_droplets(indir: InputDir, raw: Path, dst: Path) -> dict:
     """The raw matrix as <sample_id>.raw.h5: copied when it is a 10x HDF5 of gene expression only; ARC's Peaks are
     left out (streamed by barcode blocks); an MTX folder is converted."""
     if raw.is_dir():
-        X, barcodes, var, attrs = read_10x_mtx(raw)
+        X, barcodes, var, attrs = read_10x_mtx(indir, raw)
         keep = np.flatnonzero(var["feature_types"].astype(str).to_numpy() == GEX)
         csc = X[:, keep].T.tocsc()
         n = _write_10x_h5(dst, barcodes, var.iloc[keep], [(csc.data.astype(np.int32), csc.indices, np.diff(csc.indptr))], attrs)
         return {"converted_from": "mtx", "n_barcodes": len(barcodes), "n_features": len(keep), "nnz": n,
                 "features_dropped": int(len(var) - len(keep))}
-    with h5py.File(raw, "r") as h:
+    indir.check_h5(raw)
+    real = indir.check(raw)
+    with h5py.File(real, "r") as h:
         if "matrix" not in h:
             raise ValueError(f"{raw.name}: not a 10x HDF5 matrix")
         m = h["matrix"]
@@ -302,7 +326,7 @@ def write_droplets(raw: Path, dst: Path) -> dict:
         n_barcodes = int(m["shape"][1])
         keep = types == GEX
         if keep.all():
-            shutil.copyfile(raw, dst)
+            shutil.copyfile(real, dst)
             return {"copied": True, "n_barcodes": n_barcodes, "n_features": int(keep.sum()), "features_dropped": 0}
         new_index = np.cumsum(keep) - 1
         ft = m["features"]
