@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=https://schemas.pennsieve.io/app-manifest/v1.json
+schemaVersion: "1.0"
+application:
+  name: Single-cell Prep
+  description: >-
+    The first step of the single-cell workflows. Finds every single-cell or single-nucleus RNA-seq
+    sample in a folder tree by its files (10x Cell Ranger count, multi / Flex and ARC multiome
+    outputs, AnnData .h5ad, Seurat .rds) and writes one AnnData file per sample in the shape the
+    later steps share: raw counts as a sparse matrix, gene symbols, QC metrics (counts, genes,
+    % mitochondrial, % ribosomal) and the sample's metadata. Joins SPARC dataset metadata
+    (samples.xlsx / subjects.xlsx, by the sam- / sub- folders) or a sample sheet, puts an allow-list
+    of its columns and a condition column on the cells, and keeps every column in samples_full.csv.
+    Copies each sample's raw (unfiltered) matrix for ambient RNA removal. Nothing is filtered or
+    normalised.
+  type: processor
+  tags:
+    - single-cell
+    - single-nucleus
+    - transcriptomics
+    - genomics
+    - multiome
+    - anndata
+    - preprocessing
+    - neuroscience
+    - pain
+    - musculoskeletal
+runtime:
+  cpu: 2048
+  # One sample in memory at a time. Measured in the linux/amd64 image: a 27.7 k-nucleus Flex sample (78 M
+  # non-zeros) peaks at 1.85 GB, the whole 12-sample DRG C2 demo at 1.65 GB; see README "Runtime".
+  memory: 3008
+  # standard (ECS) by default; a light step a workflow can also run as a Lambda function (the image
+  # serves both, see processor/entry.py). Lambda stops a run after 15 minutes.
+  computeTypes:
+    - standard
+    - lambda
+  timeoutSeconds: 3600
+parameters:
+  - name: SAMPLE_SHEET
+    type: string
+    label: Sample sheet
+    description: >-
+      File name of the optional sample sheet (CSV, TSV or .xlsx), looked for anywhere in the input
+      (shallowest wins). Needs sample_id and path (a folder or file, matched when it equals or ends
+      the sample's path); every other column (condition, donor, batch, ...) goes to samples.csv and
+      onto every cell. When a sheet is present it defines the samples: detected samples it does not
+      list are ignored (listed in prep.json). A SPARC samples.csv without a path column is read as
+      SPARC metadata instead.
+    defaultValue: samples.csv
+  - name: SAMPLE_SUFFIX_COLUMN
+    type: string
+    label: Barcode suffix column
+    description: >-
+      Sample sheet column that splits an aggregated Cell Ranger matrix (cellranger aggr, or a
+      dataset's combined matrix) by barcode suffix: rows with the same path and a suffix (1 for
+      barcodes ending in -1, ...) each become a sample. Without such rows the matrix is one sample.
+    defaultValue: barcode_suffix
+  - name: METADATA_COLUMNS
+    type: string
+    label: Metadata columns on cells
+    description: >-
+      Comma-separated SPARC metadata columns (snake_case, e.g. left_average_pain; names are
+      converted) copied onto every cell and into samples.csv. Every column, clinical ones included,
+      goes to samples_full.csv only, so they do not spread into every derived file unless named
+      here. none copies none. Sample sheet columns are always copied.
+    defaultValue: subject_id,subject_experimental_group,sample_experimental_group,sex,age,species,sample_anatomical_location,laterality
+  - name: CONDITION_COLUMN
+    type: string
+    label: Condition column
+    description: >-
+      The column copied to `condition` (which st-compare and the reports compare by default). auto
+      uses condition if the sample sheet has one, else subject_experimental_group, else
+      sample_experimental_group; none writes no condition column.
+    defaultValue: auto
+  - name: MAX_CELLS_PER_SAMPLE
+    type: integer
+    label: Maximum cells per sample
+    description: >-
+      Keep at most this many cells per sample: a seeded random subset in source order, for quick
+      runs. 0 keeps every cell. The droplets output is never subsampled.
+    defaultValue: 0
+    min: 0
+  - name: MIN_COUNTS_PER_CELL
+    type: integer
+    label: Minimum counts per cell
+    description: >-
+      Drop cells with fewer total counts (before the subsample). 0 keeps every cell; quality
+      filtering is sc-qc's job.
+    defaultValue: 0
+    min: 0
+  - name: ORGANISM
+    type: string
+    label: Organism
+    description: >-
+      auto takes it from the metadata's species, else the 10x reference genome, else the Ensembl
+      gene id prefix, else gene symbol case (upper case: human).
+    defaultValue: auto
+    validValues: [auto, human, mouse, rat]
+  - name: SEED
+    type: integer
+    label: Seed
+    description: Seed of the MAX_CELLS_PER_SAMPLE subsample (combined with the sample_id).
+    defaultValue: 42
+  - name: THREADS
+    type: integer
+    label: Threads
+    description: Threads for numerical libraries; 0 = from the container's CPU quota.
+    defaultValue: 0
+    min: 0
+inputs:
+  - name: counts
+    description: >-
+      A folder tree searched recursively (symlinks followed inside the input): Cell Ranger count
+      outs (filtered_feature_bc_matrix.h5 or the filtered_feature_bc_matrix/ MTX folder, with
+      raw_feature_bc_matrix.h5 or raw_feature_bc_matrix/), Cell Ranger multi / Flex per-sample outs
+      (count/sample_filtered_feature_bc_matrix.h5 + sample_raw_feature_bc_matrix.h5), Cell Ranger ARC
+      outs (Gene Expression kept, Peaks left for atac-prep), .h5ad files (counts in layers["counts"],
+      X or raw.X), Seurat .rds files (v3 / v4 / v5 objects); plus the optional sample sheet and the
+      SPARC samples.xlsx / subjects.xlsx (or .csv / .tsv).
+    placement: root
+    required: true
+outputs:
+  - name: cells
+    description: >-
+      cells/<sample_id>.h5ad, one per sample: raw counts in X (CSR, int32), obs_names
+      <sample_id>:<barcode>, obs (sample_id, total_counts, n_genes_by_counts, pct_counts_mt,
+      pct_counts_ribo, condition, the metadata columns, the source's own per-cell columns), var
+      (gene symbols, gene_ids, feature_types, mt, ribo), uns["pennsieve"] (source, chemistry,
+      organism, prep_version); provenance.json, summary.json.
+    formats:
+      - format_3590
+    mediaTypes:
+      - application/x-hdf5
+      - application/json
+  - name: droplets
+    description: >-
+      droplets/<sample_id>.raw.h5, the sample's raw (unfiltered) matrix as 10x HDF5 (Gene Expression
+      only), when the input has one; sc-qc uses it for ambient RNA removal. provenance.json,
+      summary.json.
+    formats:
+      - format_3590
+    mediaTypes:
+      - application/x-hdf5
+      - application/json
+  - name: metadata
+    description: >-
+      metadata/samples.csv (sample_id, path, source, n_obs, n_genes, organism, condition and the
+      metadata put on cells), metadata/samples_full.csv (every sample sheet and SPARC column),
+      metadata/prep.json (per sample: source, files read, chemistry, organism, droplets, features
+      and cells kept / dropped, SPARC match, warnings; skipped and ignored inputs),
+      provenance.json, summary.json.
+    mediaTypes:
+      - text/csv
+      - application/json

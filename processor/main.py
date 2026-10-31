@@ -42,7 +42,13 @@ APP_NAME = "sc-prep"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ORGANISMS = ("auto", "human", "mouse", "rat")
 CONDITION_AUTO = ("condition", "subject_experimental_group", "sample_experimental_group")
-CITATIONS = ["10.1186/s13059-017-1382-0", "10.21105/joss.04371", "10.1038/s41576-023-00586-w"]
+CITATIONS = [
+    {"doi": "10.1186/s13059-017-1382-0", "pmid": "29409532", "text": "Wolf et al. Genome Biology 2018 (Scanpy)"},
+    {"doi": "10.21105/joss.04371", "text": "Virshup et al. Journal of Open Source Software 2024 (anndata)"},
+    {"doi": "10.1038/s41576-023-00586-w", "pmid": "37002403",
+     "text": "Heumos et al. Nature Reviews Genetics 2023 (single-cell best practices)"},
+]
+RDS_CITATION = {"doi": "10.21105/joss.07540", "text": "Ramos-Carreño and Rossi. Journal of Open Source Software 2024 (rdata)"}
 
 DEFAULTS = {
     "SAMPLE_SHEET": "samples.csv",
@@ -290,37 +296,38 @@ def main() -> int:
     full_cols = list(dict.fromkeys((["condition"] if condition_from else []) + sheet.columns + sparc.columns))
     write_csv(meta_dir / "samples_full.csv", required + filled(full_cols), rows)
     finished = datetime.now(timezone.utc)
-    common = {"app": APP_NAME, "appVersion": app_version, "generatedAt": finished.isoformat(timespec="seconds"),
+    common = {"app": APP_NAME, "version": app_version, "finished": finished.isoformat(timespec="seconds"),
               "parameters": params}
     write_json(meta_dir / "prep.json", {
-        **common, "sampleSheet": rel(found.sheet) if found.sheet else None, "sampleSheetColumns": sheet.columns,
-        "sparc": sparc.files, "sparcColumns": sparc.columns, "conditionFrom": condition_from,
-        "columnsOnCells": obs_columns, "samples": prep_samples, "skipped": skipped,
-        "ignored": found.ignored, "nIgnored": found.n_ignored})
+        **common, "sample_sheet": rel(found.sheet) if found.sheet else None, "sample_sheet_columns": sheet.columns,
+        "sparc": sparc.files, "sparc_columns": sparc.columns, "condition_from": condition_from,
+        "columns_on_cells": obs_columns, "samples": prep_samples, "skipped": skipped,
+        "ignored": found.ignored, "n_ignored": found.n_ignored})
     conditions = Counter(r.get("condition", "") for r in rows) if condition_from else Counter()
-    summary = {**common, "nSamples": len(rows), "nFailed": len(skipped),
-               "nCells": int(sum(r["n_obs"] for r in rows)),
-               "nWithDroplets": sum(1 for s in prep_samples.values() if s["droplets"]),
+    summary = {**common, "n_samples": len(rows), "n_failed": len(skipped),
+               "n_cells": int(sum(r["n_obs"] for r in rows)),
+               "n_with_droplets": sum(1 for s in prep_samples.values() if s["droplets"]),
                "sources": dict(Counter(r["source"] for r in rows)),
                "organisms": dict(Counter(r["organism"] for r in rows)),
-               "conditionFrom": condition_from, "samplesPerCondition": dict(conditions),
+               "condition_from": condition_from, "samples_per_condition": dict(conditions),
                "samples": [{"sample_id": r["sample_id"], "n_obs": r["n_obs"], "n_genes": r["n_genes"],
                             "n_obs_source": prep_samples[r["sample_id"]]["cells"]["n_source"]} for r in rows]}
     provenance = {
-        **common, "tools": tool_versions(), "startedAt": started.isoformat(timespec="seconds"),
-        "finishedAt": finished.isoformat(timespec="seconds"), "seconds": round(time.monotonic() - t_start, 2),
-        "threads": n_threads,
-        "inputsFound": {"samples": [{"path": c.rel(input_dir), "source": c.source} for c in found.candidates],
-                        "sampleSheet": rel(found.sheet) if found.sheet else None, "sparc": sparc.files,
-                        "nFiles": found.n_files, "nIgnored": found.n_ignored},
-        "samples": prov_samples, "skipped": skipped, "nOk": len(rows), "nFailed": len(skipped),
-        "peakRssMb": peak_rss_mb(), "citations": CITATIONS,
+        "app": APP_NAME, "version": app_version, "tools": tool_versions(), "parameters": params,
+        "inputs": {"samples": [{"path": c.rel(input_dir), "source": c.source} for c in found.candidates],
+                   "sample_sheet": rel(found.sheet) if found.sheet else None, "sparc": sparc.files,
+                   "n_files": found.n_files, "n_ignored": found.n_ignored},
+        "started": started.isoformat(timespec="seconds"), "finished": finished.isoformat(timespec="seconds"),
+        "seconds": round(time.monotonic() - t_start, 2), "threads": n_threads,
+        "samples": prov_samples, "skipped": skipped, "n_ok": len(rows), "n_failed": len(skipped),
+        "peak_rss_mb": peak_rss_mb(),
+        "citations": CITATIONS + ([RDS_CITATION] if any(r["source"] == "rds" for r in rows) else []),
     }
     for d in (cells_dir, drop_dir, meta_dir):
         write_json(d / "provenance.json", provenance)
         write_json(d / "summary.json", summary)
     log.info("%d sample(s) written (%d cells, %d with droplets), %d skipped, peak RSS %s MB, %.1fs",
-             len(rows), summary["nCells"], summary["nWithDroplets"], len(skipped), provenance["peakRssMb"],
+             len(rows), summary["n_cells"], summary["n_with_droplets"], len(skipped), provenance["peak_rss_mb"],
              time.monotonic() - t_start)
     if not rows:
         log.error("every sample failed")

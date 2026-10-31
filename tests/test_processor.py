@@ -78,7 +78,7 @@ def test_every_sample_written(outputs, layout):
     assert table["arc1"]["n_genes"] == str(len(HUMAN))            # Peaks dropped
 
     prep = json.loads((out / "metadata" / "prep.json").read_text())
-    assert prep["app"] == "sc-prep" and prep["appVersion"] == VERSION
+    assert prep["app"] == "sc-prep" and prep["version"] == VERSION
     assert [s["path"] for s in prep["skipped"]] == [f"{prefix}matrix_only.rds"]
     assert "not a Seurat object" in prep["skipped"][0]["reason"]
     reasons = {i["path"]: i["reason"] for i in prep["ignored"]}
@@ -93,10 +93,16 @@ def test_every_sample_written(outputs, layout):
     assert prep["samples"]["s1"]["seurat"]["layers"] == ["counts.s1", "counts.s2"]
 
     prov = json.loads((out / "cells" / "provenance.json").read_text())
-    assert prov["nOk"] == len(SAMPLES) and prov["nFailed"] == 1 and prov["peakRssMb"] > 0
-    assert "10.1186/s13059-017-1382-0" in prov["citations"]
+    assert {"app", "version", "tools", "parameters", "inputs", "started", "finished", "samples", "peak_rss_mb",
+            "citations"} <= set(prov)
+    assert prov["app"] == "sc-prep" and prov["version"] == VERSION and prov["tools"]["scanpy"]
+    assert prov["n_ok"] == len(SAMPLES) and prov["n_failed"] == 1 and prov["peak_rss_mb"] > 0
+    assert {"doi": "10.1186/s13059-017-1382-0", "pmid": "29409532", "text": "Wolf et al. Genome Biology 2018 (Scanpy)"} \
+        in prov["citations"]
+    assert "10.21105/joss.07540" in [c["doi"] for c in prov["citations"]]     # a Seurat file was read
+    assert all(set(c) <= {"doi", "pmid", "text"} and c["doi"] and c["text"] for c in prov["citations"])
     summary = json.loads((out / "metadata" / "summary.json").read_text())
-    assert summary["nSamples"] == len(SAMPLES) and summary["samplesPerCondition"]["acute"] == 1
+    assert summary["n_samples"] == len(SAMPLES) and summary["samples_per_condition"]["acute"] == 1
 
 
 @pytest.mark.parametrize("sid", sorted(SAMPLES))
@@ -132,7 +138,7 @@ def test_sparc_join(outputs):
     assert "metadata_only" not in full and "sample_experimental_group" not in full
     prep = json.loads((out / "metadata" / "prep.json").read_text())
     assert prep["samples"]["sam-A1"]["sparc"] == {"sample": "sam-A1", "sample_matched_by": "folder", "subject": "sub-A"}
-    assert prep["conditionFrom"] == "subject_experimental_group"
+    assert prep["condition_from"] == "subject_experimental_group"
 
 
 def test_droplets(outputs, fixture_root):

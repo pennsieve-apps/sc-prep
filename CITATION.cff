@@ -1,0 +1,786 @@
+cff-version: 1.2.0
+message: If you use this app, please cite it and the works it builds on, listed under references.
+type: software
+title: Single-cell Prep
+abstract: 'The first step of the single-cell workflows: finds Cell Ranger (count, multi / Flex, ARC), AnnData and
+  Seurat samples in a folder tree, joins SPARC dataset metadata or a sample sheet, and writes one raw-count AnnData
+  file per sample with QC metrics, plus each sample''s raw droplet matrix and sample tables.'
+authors:
+- name: Pennsieve (University of Pennsylvania)
+repository-code: https://github.com/pennsieve-apps/sc-prep
+license: Apache-2.0
+version: 0.1.0
+keywords:
+- single-cell
+- single-nucleus
+- transcriptomics
+- genomics
+- multiome
+- anndata
+- preprocessing
+- sparc
+references:
+- type: article
+  title: 'SCANPY: large-scale single-cell gene expression data analysis'
+  authors:
+  - family-names: Wolf
+    given-names: F. Alexander
+    orcid: https://orcid.org/0000-0002-8760-7838
+  - family-names: Angerer
+    given-names: Philipp
+  - family-names: Theis
+    given-names: Fabian J.
+  year: 2018
+  journal: Genome Biology
+  volume: 19
+  issue: '1'
+  start: '15'
+  doi: 10.1186/s13059-017-1382-0
+  identifiers:
+  - type: other
+    value: PMID:29409532
+    description: PubMed
+- type: article
+  title: 'anndata: Access and store annotated data matrices'
+  authors:
+  - family-names: Virshup
+    given-names: Isaac
+    orcid: https://orcid.org/0000-0002-1710-8945
+  - family-names: Rybakov
+    given-names: Sergei
+    orcid: https://orcid.org/0000-0002-4944-6586
+  - family-names: Theis
+    given-names: Fabian J.
+    orcid: https://orcid.org/0000-0002-2419-1943
+  - family-names: Angerer
+    given-names: Philipp
+    orcid: https://orcid.org/0000-0002-0369-2888
+  - family-names: Wolf
+    given-names: F. Alexander
+    orcid: https://orcid.org/0000-0002-8760-7838
+  year: 2024
+  journal: Journal of Open Source Software
+  volume: 9
+  issue: '101'
+  start: '4371'
+  doi: 10.21105/joss.04371
+- type: article
+  title: Best practices for single-cell analysis across modalities
+  authors:
+  - family-names: Heumos
+    given-names: Lukas
+    orcid: https://orcid.org/0000-0002-8937-3457
+  - family-names: Schaar
+    given-names: Anna C.
+    orcid: https://orcid.org/0000-0003-1063-005X
+  - family-names: Lance
+    given-names: Christopher
+    orcid: https://orcid.org/0000-0002-1275-9802
+  - family-names: Litinetskaya
+    given-names: Anastasia
+  - family-names: Drost
+    given-names: Felix
+    orcid: https://orcid.org/0000-0002-2600-4048
+  - family-names: Zappia
+    given-names: Luke
+    orcid: https://orcid.org/0000-0001-7744-8565
+  - family-names: Lücken
+    given-names: Malte D.
+    orcid: https://orcid.org/0000-0001-7464-7921
+  - family-names: Strobl
+    given-names: Daniel C.
+  - family-names: Henao
+    given-names: Juan
+  - family-names: Curion
+    given-names: Fabiola
+    orcid: https://orcid.org/0000-0003-2502-8803
+  - name: Single-cell Best Practices Consortium
+  - family-names: Aliee
+    given-names: Hananeh
+  - family-names: Ansari
+    given-names: Meshal
+  - family-names: Badia-i-Mompel
+    given-names: Pau
+  - family-names: Büttner
+    given-names: Maren
+  - family-names: Dann
+    given-names: Emma
+  - family-names: Dimitrov
+    given-names: Daniel
+  - family-names: Dony
+    given-names: Leander
+  - family-names: Frishberg
+    given-names: Amit
+  - family-names: He
+    given-names: Dongze
+  - family-names: Hediyeh-zadeh
+    given-names: Soroor
+  - family-names: Hetzel
+    given-names: Leon
+  - family-names: Ibarra
+    given-names: Ignacio L.
+  - family-names: Jones
+    given-names: Matthew G.
+  - family-names: Lotfollahi
+    given-names: Mohammad
+  - family-names: Martens
+    given-names: Laura D.
+  - family-names: Müller
+    given-names: Christian L.
+  - family-names: Nitzan
+    given-names: Mor
+  - family-names: Ostner
+    given-names: Johannes
+  - family-names: Palla
+    given-names: Giovanni
+  - family-names: Patro
+    given-names: Rob
+  - family-names: Piran
+    given-names: Zoe
+  - family-names: Ramírez-Suástegui
+    given-names: Ciro
+  - family-names: Saez-Rodriguez
+    given-names: Julio
+  - family-names: Sarkar
+    given-names: Hirak
+  - family-names: Schubert
+    given-names: Benjamin
+  - family-names: Sikkema
+    given-names: Lisa
+  - family-names: Srivastava
+    given-names: Avi
+  - family-names: Tanevski
+    given-names: Jovan
+  - family-names: Virshup
+    given-names: Isaac
+  - family-names: Weiler
+    given-names: Philipp
+  - family-names: Schiller
+    given-names: Herbert B.
+  - family-names: Theis
+    given-names: Fabian J.
+    orcid: https://orcid.org/0000-0002-2419-1943
+  year: 2023
+  journal: Nature Reviews Genetics
+  volume: 24
+  issue: '8'
+  start: '550'
+  end: '572'
+  doi: 10.1038/s41576-023-00586-w
+  identifiers:
+  - type: other
+    value: PMID:37002403
+    description: PubMed
+- type: article
+  title: Array programming with NumPy
+  authors:
+  - family-names: Harris
+    given-names: Charles R.
+  - family-names: Millman
+    given-names: K. Jarrod
+    orcid: https://orcid.org/0000-0002-5263-5070
+  - family-names: van der Walt
+    given-names: Stéfan J.
+    orcid: https://orcid.org/0000-0001-9276-1891
+  - family-names: Gommers
+    given-names: Ralf
+    orcid: https://orcid.org/0000-0002-0300-3333
+  - family-names: Virtanen
+    given-names: Pauli
+  - family-names: Cournapeau
+    given-names: David
+  - family-names: Wieser
+    given-names: Eric
+  - family-names: Taylor
+    given-names: Julian
+  - family-names: Berg
+    given-names: Sebastian
+  - family-names: Smith
+    given-names: Nathaniel J.
+  - family-names: Kern
+    given-names: Robert
+  - family-names: Picus
+    given-names: Matti
+    orcid: https://orcid.org/0000-0002-1771-9949
+  - family-names: Hoyer
+    given-names: Stephan
+    orcid: https://orcid.org/0000-0002-5207-0380
+  - family-names: van Kerkwijk
+    given-names: Marten H.
+  - family-names: Brett
+    given-names: Matthew
+  - family-names: Haldane
+    given-names: Allan
+  - family-names: del Río
+    given-names: Jaime Fernández
+  - family-names: Wiebe
+    given-names: Mark
+    orcid: https://orcid.org/0000-0003-3603-8038
+  - family-names: Peterson
+    given-names: Pearu
+    orcid: https://orcid.org/0000-0001-7328-4305
+  - family-names: Gérard-Marchant
+    given-names: Pierre
+  - family-names: Sheppard
+    given-names: Kevin
+    orcid: https://orcid.org/0000-0001-8700-2292
+  - family-names: Reddy
+    given-names: Tyler
+  - family-names: Weckesser
+    given-names: Warren
+  - family-names: Abbasi
+    given-names: Hameer
+  - family-names: Gohlke
+    given-names: Christoph
+    orcid: https://orcid.org/0000-0001-8108-7707
+  - family-names: Oliphant
+    given-names: Travis E.
+  year: 2020
+  journal: Nature
+  volume: 585
+  issue: '7825'
+  start: '357'
+  end: '362'
+  doi: 10.1038/s41586-020-2649-2
+  identifiers:
+  - type: other
+    value: PMID:32939066
+    description: PubMed
+- type: article
+  title: 'SciPy 1.0: fundamental algorithms for scientific computing in Python'
+  authors:
+  - family-names: Virtanen
+    given-names: Pauli
+  - family-names: Gommers
+    given-names: Ralf
+    orcid: https://orcid.org/0000-0002-0300-3333
+  - family-names: Oliphant
+    given-names: Travis E.
+  - family-names: Haberland
+    given-names: Matt
+    orcid: https://orcid.org/0000-0003-4806-3601
+  - family-names: Reddy
+    given-names: Tyler
+    orcid: https://orcid.org/0000-0003-2364-6157
+  - family-names: Cournapeau
+    given-names: David
+  - family-names: Burovski
+    given-names: Evgeni
+  - family-names: Peterson
+    given-names: Pearu
+  - family-names: Weckesser
+    given-names: Warren
+  - family-names: Bright
+    given-names: Jonathan
+  - family-names: van der Walt
+    given-names: Stéfan J.
+    orcid: https://orcid.org/0000-0001-9276-1891
+  - family-names: Brett
+    given-names: Matthew
+  - family-names: Wilson
+    given-names: Joshua
+  - family-names: Millman
+    given-names: K. Jarrod
+    orcid: https://orcid.org/0000-0002-5263-5070
+  - family-names: Mayorov
+    given-names: Nikolay
+  - family-names: Nelson
+    given-names: Andrew R. J.
+    orcid: https://orcid.org/0000-0002-4548-3558
+  - family-names: Jones
+    given-names: Eric
+  - family-names: Kern
+    given-names: Robert
+  - family-names: Larson
+    given-names: Eric
+  - family-names: Carey
+    given-names: C J
+  - family-names: Polat
+    given-names: İlhan
+  - family-names: Feng
+    given-names: Yu
+  - family-names: Moore
+    given-names: Eric W.
+  - family-names: VanderPlas
+    given-names: Jake
+  - family-names: Laxalde
+    given-names: Denis
+    orcid: https://orcid.org/0000-0002-5540-4825
+  - family-names: Perktold
+    given-names: Josef
+  - family-names: Cimrman
+    given-names: Robert
+  - family-names: Henriksen
+    given-names: Ian
+  - family-names: Quintero
+    given-names: E. A.
+  - family-names: Harris
+    given-names: Charles R.
+  - family-names: Archibald
+    given-names: Anne M.
+  - family-names: Ribeiro
+    given-names: Antônio H.
+    orcid: https://orcid.org/0000-0003-3632-8529
+  - family-names: Pedregosa
+    given-names: Fabian
+  - family-names: van Mulbregt
+    given-names: Paul
+    orcid: https://orcid.org/0000-0002-2382-8308
+  - name: SciPy 1.0 Contributors
+  - family-names: Vijaykumar
+    given-names: Aditya
+  - family-names: Bardelli
+    given-names: Alessandro Pietro
+  - family-names: Rothberg
+    given-names: Alex
+  - family-names: Hilboll
+    given-names: Andreas
+  - family-names: Kloeckner
+    given-names: Andreas
+  - family-names: Scopatz
+    given-names: Anthony
+  - family-names: Lee
+    given-names: Antony
+  - family-names: Rokem
+    given-names: Ariel
+  - family-names: Woods
+    given-names: C. Nathan
+  - family-names: Fulton
+    given-names: Chad
+  - family-names: Masson
+    given-names: Charles
+  - family-names: Häggström
+    given-names: Christian
+  - family-names: Fitzgerald
+    given-names: Clark
+  - family-names: Nicholson
+    given-names: David A.
+  - family-names: Hagen
+    given-names: David R.
+  - family-names: Pasechnik
+    given-names: Dmitrii V.
+  - family-names: Olivetti
+    given-names: Emanuele
+  - family-names: Martin
+    given-names: Eric
+  - family-names: Wieser
+    given-names: Eric
+  - family-names: Silva
+    given-names: Fabrice
+  - family-names: Lenders
+    given-names: Felix
+  - family-names: Wilhelm
+    given-names: Florian
+  - family-names: Young
+    given-names: G.
+  - family-names: Price
+    given-names: Gavin A.
+  - family-names: Ingold
+    given-names: Gert-Ludwig
+  - family-names: Allen
+    given-names: Gregory E.
+  - family-names: Lee
+    given-names: Gregory R.
+  - family-names: Audren
+    given-names: Hervé
+  - family-names: Probst
+    given-names: Irvin
+  - family-names: Dietrich
+    given-names: Jörg P.
+  - family-names: Silterra
+    given-names: Jacob
+  - family-names: Webber
+    given-names: James T
+  - family-names: Slavič
+    given-names: Janko
+  - family-names: Nothman
+    given-names: Joel
+  - family-names: Buchner
+    given-names: Johannes
+  - family-names: Kulick
+    given-names: Johannes
+  - family-names: Schönberger
+    given-names: Johannes L.
+  - family-names: de Miranda Cardoso
+    given-names: José Vinícius
+  - family-names: Reimer
+    given-names: Joscha
+  - family-names: Harrington
+    given-names: Joseph
+  - family-names: Rodríguez
+    given-names: Juan Luis Cano
+  - family-names: Nunez-Iglesias
+    given-names: Juan
+  - family-names: Kuczynski
+    given-names: Justin
+  - family-names: Tritz
+    given-names: Kevin
+  - family-names: Thoma
+    given-names: Martin
+  - family-names: Newville
+    given-names: Matthew
+  - family-names: Kümmerer
+    given-names: Matthias
+  - family-names: Bolingbroke
+    given-names: Maximilian
+  - family-names: Tartre
+    given-names: Michael
+  - family-names: Pak
+    given-names: Mikhail
+  - family-names: Smith
+    given-names: Nathaniel J.
+  - family-names: Nowaczyk
+    given-names: Nikolai
+  - family-names: Shebanov
+    given-names: Nikolay
+  - family-names: Pavlyk
+    given-names: Oleksandr
+  - family-names: Brodtkorb
+    given-names: Per A.
+  - family-names: Lee
+    given-names: Perry
+  - family-names: McGibbon
+    given-names: Robert T.
+  - family-names: Feldbauer
+    given-names: Roman
+  - family-names: Lewis
+    given-names: Sam
+  - family-names: Tygier
+    given-names: Sam
+  - family-names: Sievert
+    given-names: Scott
+  - family-names: Vigna
+    given-names: Sebastiano
+  - family-names: Peterson
+    given-names: Stefan
+  - family-names: More
+    given-names: Surhud
+  - family-names: Pudlik
+    given-names: Tadeusz
+  - family-names: Oshima
+    given-names: Takuya
+  - family-names: Pingel
+    given-names: Thomas J.
+  - family-names: Robitaille
+    given-names: Thomas P.
+  - family-names: Spura
+    given-names: Thomas
+  - family-names: Jones
+    given-names: Thouis R.
+  - family-names: Cera
+    given-names: Tim
+  - family-names: Leslie
+    given-names: Tim
+  - family-names: Zito
+    given-names: Tiziano
+  - family-names: Krauss
+    given-names: Tom
+  - family-names: Upadhyay
+    given-names: Utkarsh
+  - family-names: Halchenko
+    given-names: Yaroslav O.
+  - family-names: Vázquez-Baeza
+    given-names: Yoshiki
+  year: 2020
+  journal: Nature Methods
+  volume: 17
+  issue: '3'
+  start: '261'
+  end: '272'
+  doi: 10.1038/s41592-019-0686-2
+  identifiers:
+  - type: other
+    value: PMID:32015543
+    description: PubMed
+- type: conference-paper
+  title: Data Structures for Statistical Computing in Python
+  authors:
+  - family-names: McKinney
+    given-names: Wes
+  year: 2010
+  conference:
+    name: Proceedings of the Python in Science Conference
+  start: '56'
+  end: '61'
+  doi: 10.25080/Majora-92bf1922-00a
+- type: article
+  title: 'rdata: A Python library for R datasets'
+  authors:
+  - family-names: Ramos-Carreño
+    given-names: Carlos
+    orcid: https://orcid.org/0000-0003-2566-7058
+  - family-names: Rossi
+    given-names: Tuomas
+    orcid: https://orcid.org/0000-0002-8713-4559
+  year: 2024
+  journal: Journal of Open Source Software
+  volume: 9
+  issue: '104'
+  start: '7540'
+  doi: 10.21105/joss.07540
+- type: article
+  title: Dictionary learning for integrative, multimodal and scalable single-cell analysis
+  authors:
+  - family-names: Hao
+    given-names: Yuhan
+  - family-names: Stuart
+    given-names: Tim
+    orcid: https://orcid.org/0000-0002-3044-0897
+  - family-names: Kowalski
+    given-names: Madeline H.
+  - family-names: Choudhary
+    given-names: Saket
+    orcid: https://orcid.org/0000-0001-5202-7633
+  - family-names: Hoffman
+    given-names: Paul
+    orcid: https://orcid.org/0000-0002-7693-8957
+  - family-names: Hartman
+    given-names: Austin
+  - family-names: Srivastava
+    given-names: Avi
+  - family-names: Molla
+    given-names: Gesmira
+  - family-names: Madad
+    given-names: Shaista
+  - family-names: Fernandez-Granda
+    given-names: Carlos
+  - family-names: Satija
+    given-names: Rahul
+    orcid: https://orcid.org/0000-0001-9448-8833
+  year: 2024
+  journal: Nature Biotechnology
+  volume: 42
+  issue: '2'
+  start: '293'
+  end: '304'
+  doi: 10.1038/s41587-023-01767-y
+  identifiers:
+  - type: other
+    value: PMID:37231261
+    description: PubMed
+- type: article
+  title: Massively parallel digital transcriptional profiling of single cells
+  authors:
+  - family-names: Zheng
+    given-names: Grace X. Y.
+  - family-names: Terry
+    given-names: Jessica M.
+  - family-names: Belgrader
+    given-names: Phillip
+  - family-names: Ryvkin
+    given-names: Paul
+  - family-names: Bent
+    given-names: Zachary W.
+  - family-names: Wilson
+    given-names: Ryan
+  - family-names: Ziraldo
+    given-names: Solongo B.
+  - family-names: Wheeler
+    given-names: Tobias D.
+  - family-names: McDermott
+    given-names: Geoff P.
+  - family-names: Zhu
+    given-names: Junjie
+  - family-names: Gregory
+    given-names: Mark T.
+  - family-names: Shuga
+    given-names: Joe
+  - family-names: Montesclaros
+    given-names: Luz
+  - family-names: Underwood
+    given-names: Jason G.
+  - family-names: Masquelier
+    given-names: Donald A.
+  - family-names: Nishimura
+    given-names: Stefanie Y.
+  - family-names: Schnall-Levin
+    given-names: Michael
+  - family-names: Wyatt
+    given-names: Paul W.
+  - family-names: Hindson
+    given-names: Christopher M.
+  - family-names: Bharadwaj
+    given-names: Rajiv
+  - family-names: Wong
+    given-names: Alexander
+  - family-names: Ness
+    given-names: Kevin D.
+  - family-names: Beppu
+    given-names: Lan W.
+  - family-names: Deeg
+    given-names: H. Joachim
+  - family-names: McFarland
+    given-names: Christopher
+    orcid: https://orcid.org/0000-0003-0546-9652
+  - family-names: Loeb
+    given-names: Keith R.
+  - family-names: Valente
+    given-names: William J.
+  - family-names: Ericson
+    given-names: Nolan G.
+  - family-names: Stevens
+    given-names: Emily A.
+  - family-names: Radich
+    given-names: Jerald P.
+  - family-names: Mikkelsen
+    given-names: Tarjei S.
+  - family-names: Hindson
+    given-names: Benjamin J.
+  - family-names: Bielas
+    given-names: Jason H.
+  year: 2017
+  journal: Nature Communications
+  volume: 8
+  issue: '1'
+  start: '14049'
+  doi: 10.1038/ncomms14049
+  identifiers:
+  - type: other
+    value: PMID:28091601
+    description: PubMed
+- type: article
+  title: 'SPARC Data Structure: Rationale and Design of a FAIR Standard for Biomedical Research Data'
+  authors:
+  - family-names: Bandrowski
+    given-names: Anita
+    orcid: https://orcid.org/0000-0002-5497-0243
+  - family-names: Grethe
+    given-names: Jeffrey S.
+    orcid: https://orcid.org/0000-0001-5212-7052
+  - family-names: Pilko
+    given-names: Anna
+    orcid: https://orcid.org/0000-0003-2353-6310
+  - family-names: Gillespie
+    given-names: Tom
+    orcid: https://orcid.org/0000-0002-7509-4801
+  - family-names: Pine
+    given-names: Gabi
+  - family-names: Patel
+    given-names: Bhavesh
+    orcid: https://orcid.org/0000-0002-0307-262X
+  - family-names: Surles-Zeigler
+    given-names: Monique
+  - family-names: Martone
+    given-names: Maryann E.
+    orcid: https://orcid.org/0000-0002-8406-3871
+  year: 2021
+  notes: bioRxiv preprint
+  doi: 10.1101/2021.02.10.430563
+- type: software
+  title: h5py
+  authors:
+  - family-names: Collette
+    given-names: Andrew
+  version: 3.16.0
+  license: BSD-3-Clause
+  repository-code: https://github.com/h5py/h5py
+  notes: Reads the 10x HDF5 matrices and writes the droplets files.
+- type: software
+  title: openpyxl
+  authors:
+  - family-names: Gazoni
+    given-names: Eric
+  - family-names: Clark
+    given-names: Charlie
+  version: 3.1.5
+  license: MIT
+  repository-code: https://foss.heptapod.net/openpyxl/openpyxl
+  notes: Reads the SPARC .xlsx sheets.
+- type: software
+  title: defusedxml
+  authors:
+  - family-names: Heimes
+    given-names: Christian
+  version: 0.7.1
+  license: PSF-2.0
+  repository-code: https://github.com/tiran/defusedxml
+  notes: Hardens the XML parsing of .xlsx files.
+- type: data
+  title: Single nucleus sequencing of human C2 dorsal root ganglia tissue from fusion surgeries
+  authors:
+  - family-names: Arendt-Tranholm
+    given-names: Asta
+    orcid: https://orcid.org/0000-0002-6997-0959
+  - family-names: Sankaranarayanan
+    given-names: Ishwarya
+    orcid: https://orcid.org/0000-0002-6765-0281
+  - family-names: Price
+    given-names: Theodore J
+    orcid: https://orcid.org/0000-0002-6971-6221
+  year: 2025
+  publisher:
+    name: SPARC Portal
+  version: '1'
+  doi: 10.26275/cxuf-ftav
+  license: CC-BY-4.0
+  url: https://discover.pennsieve.io/datasets/475/version/1
+  notes: Pennsieve Discover dataset 475, the demo data of sc-prep; described by doi:10.1093/brain/awaf370.
+- type: article
+  title: 'Transcriptome of the human C2 dorsal root ganglia in C1–2 arthrodesis surgery: insight for neck pain'
+  authors:
+  - family-names: Arendt-Tranholm
+    given-names: Asta
+  - family-names: Sankaranarayanan
+    given-names: Ishwarya
+  - family-names: Payne
+    given-names: Cathryn
+  - family-names: Mancilla Moreno
+    given-names: Marisol
+  - family-names: Mazhar
+    given-names: Khadijah
+  - family-names: Yap
+    given-names: Natalie
+  - family-names: Chiu
+    given-names: Abby P
+  - family-names: Barry
+    given-names: Allison
+  - family-names: Patel
+    given-names: Pooja J
+  - family-names: Inturi
+    given-names: Nikhil N
+  - family-names: Tavares-Ferreira
+    given-names: Diana
+  - family-names: Amin
+    given-names: Anubhav
+  - family-names: Karandikar
+    given-names: Mahesh
+  - family-names: Jarvik
+    given-names: Jeffrey G
+  - family-names: Turner
+    given-names: Judith A
+  - family-names: Hofstetter
+    given-names: Christoph P
+  - family-names: Curatolo
+    given-names: Michele
+    orcid: https://orcid.org/0000-0003-4130-6826
+  - family-names: Price
+    given-names: Theodore J
+    orcid: https://orcid.org/0000-0002-6971-6221
+  year: 2026
+  journal: Brain
+  volume: 149
+  issue: '4'
+  start: '1349'
+  end: '1364'
+  doi: 10.1093/brain/awaf370
+  identifiers:
+  - type: other
+    value: PMID:41032656
+    description: PubMed
+- type: data
+  title: Single nucleus sequencing atlas of human dorsal root ganglion
+  authors:
+  - family-names: Sankaranarayanan
+    given-names: Ishwarya
+    orcid: https://orcid.org/0000-0002-6765-0281
+  - family-names: Price
+    given-names: Theodore J
+    orcid: https://orcid.org/0000-0002-6971-6221
+  year: 2025
+  publisher:
+    name: SPARC Portal
+  version: '1'
+  doi: 10.26275/9qsp-i8dh
+  license: CC-BY-4.0
+  url: https://discover.pennsieve.io/datasets/480/version/1
+  notes: Pennsieve Discover dataset 480, demo data of sc-prep.

@@ -48,7 +48,9 @@ def read_10x_h5(path: Path) -> tuple[sp.csr_matrix, np.ndarray, pd.DataFrame, di
             raise ValueError(f"{path.name}: not a 10x HDF5 matrix (no 'matrix' group)")
         m = h["matrix"]
         n_features, n_barcodes = (int(v) for v in m["shape"][:])
-        csc = sp.csc_matrix((m["data"][:], m["indices"][:], m["indptr"][:]), shape=(n_features, n_barcodes))
+        # int32 indices read as such (not via an int64 copy): half the memory of the largest array
+        idx_type = np.int32 if n_features < 2**31 else np.int64
+        csc = sp.csc_matrix((m["data"][:], m["indices"].astype(idx_type)[:], m["indptr"][:]), shape=(n_features, n_barcodes))
         barcodes = m["barcodes"][:].astype(str)
         ft = m["features"]
         names = ft["name"][:].astype(str)

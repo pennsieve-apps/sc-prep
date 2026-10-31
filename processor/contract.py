@@ -39,10 +39,10 @@ def as_counts(X) -> sp.csr_matrix:
         raise ValueError("the matrix is not raw counts (negative or non-integer values)")
     if d.size and d.max() >= 2**31:
         raise ValueError("counts above 2^31")
-    X = X.astype(np.int32)
+    X = X.astype(np.int32, copy=False)
     if X.nnz < 2**31 - 1:
-        X.indices = X.indices.astype(np.int32)
-        X.indptr = X.indptr.astype(np.int32)
+        X.indices = X.indices.astype(np.int32, copy=False)
+        X.indptr = X.indptr.astype(np.int32, copy=False)
     return X
 
 
@@ -91,10 +91,12 @@ def finalise(read: Read, sample_id: str, source_rel: str, params: dict, metadata
     if not gene.any():
         raise ValueError("no Gene Expression features")
     dropped = {t: int((types == t).sum()) for t in sorted(set(types[~gene]))}
-    X = as_counts(a.X[:, np.flatnonzero(gene)] if not gene.all() else a.X)
-    var = var.iloc[np.flatnonzero(gene)]
+    X = a.X.tocsr() if sp.issparse(a.X) else sp.csr_matrix(np.asarray(a.X))
+    if not gene.all():
+        X = X[:, np.flatnonzero(gene)]
+        var = var.iloc[np.flatnonzero(gene)]
 
-    # 2. cells: count floor, then the subsample
+    # 2. cells: count floor, then the subsample (before any copy of the whole matrix)
     obs = a.obs.copy()
     totals = np.asarray(X.sum(axis=1)).ravel()
     idx = np.flatnonzero(totals >= params["MIN_COUNTS_PER_CELL"])
@@ -106,6 +108,9 @@ def finalise(read: Read, sample_id: str, source_rel: str, params: dict, metadata
         raise ValueError(f"no cells left (MIN_COUNTS_PER_CELL={params['MIN_COUNTS_PER_CELL']})")
     if len(idx) < n_obs_source:
         X, obs = X[idx], obs.iloc[idx]
+    del a
+    read.adata = None
+    X = as_counts(X)
 
     # 3. var: unique symbols, mt / ribo
     adata = ad.AnnData(X=X, obs=pd.DataFrame(index=obs.index.astype(str)), var=var[["gene_ids", "feature_types"]].copy())
