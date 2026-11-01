@@ -7,6 +7,11 @@ abstract: 'The first step of the single-cell workflows: finds Cell Ranger (count
   file per sample with QC metrics, plus each sample''s raw droplet matrix and sample tables.'
 authors:
 - name: Pennsieve (University of Pennsylvania)
+contact:
+- given-names: Joost
+  family-names: Wagenaar
+  orcid: https://orcid.org/0009-0004-5925-5451
+  affiliation: University of Pennsylvania
 repository-code: https://github.com/pennsieve-apps/sc-prep
 license: Apache-2.0
 version: 0.1.5
