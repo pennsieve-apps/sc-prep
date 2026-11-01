@@ -351,3 +351,26 @@ def test_h5ad_with_external_link_is_refused(tmp_path, monkeypatch):
     assert run(inp, out, monkeypatch) == 0
     prep = json.loads((out / "metadata" / "prep.json").read_text())
     assert set(prep["samples"]) == {"ok"} and "external link" in prep["skipped"][0]["reason"]
+
+
+def test_curated_names(tmp_path):
+    """A curated dataset's renamed ARC files: hyphens for underscores, several samples in one folder by prefix."""
+    from processor.inputs import walk
+    prim = tmp_path / "primary"
+    prim.mkdir()
+    for s in ("sam-23-001-IPFP", "sam-23-004-IPFP"):
+        for suffix in ("filtered-feature-bc-matrix.h5", "atac-fragments.tsv.gz", "atac-fragments.tsv.gz.tbi"):
+            (prim / f"{s}-{suffix}").write_bytes(b"x")
+    one = tmp_path / "sam-9"
+    one.mkdir()
+    (one / "filtered-feature-bc-matrix.h5").write_bytes(b"x")
+    (one / "atac-fragments.tsv.gz").write_bytes(b"x")
+    found = walk(InputDir(tmp_path), "samples.csv")
+    got = {c.default_id: {k: p.name for k, p in c.files.items()} for c in found.candidates}
+    assert got == {
+        "sam-23-001-IPFP": {"matrix": "sam-23-001-IPFP-filtered-feature-bc-matrix.h5",
+                            "atac_fragments": "sam-23-001-IPFP-atac-fragments.tsv.gz"},
+        "sam-23-004-IPFP": {"matrix": "sam-23-004-IPFP-filtered-feature-bc-matrix.h5",
+                            "atac_fragments": "sam-23-004-IPFP-atac-fragments.tsv.gz"},
+        "sam-9": {"matrix": "filtered-feature-bc-matrix.h5", "atac_fragments": "atac-fragments.tsv.gz"}}
+    assert found.ignored == []

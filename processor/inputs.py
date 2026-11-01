@@ -68,13 +68,33 @@ def default_id_for(folder: Path, root: Path) -> str:
     return "sample" if p == root else sanitise(p.name)
 
 
+def cr_name(name: str) -> str:
+    """A file name in Cell Ranger's spelling: curated datasets often rename filtered_feature_bc_matrix.h5 to
+    sam-1-filtered-feature-bc-matrix.h5."""
+    return name.replace("-", "_")
+
+
+def prefixed_sample(folder: Path, matrix: str, names: list[str], files: dict[str, Path]) -> Candidate:
+    """One sample of a folder holding several: its matrix, and the raw matrix and fragments with the same prefix."""
+    prefix = matrix[:len(matrix) - len("filtered_feature_bc_matrix.h5")]
+    c = Candidate("cellranger", files[matrix], {"matrix": files[matrix]}, sanitise(prefix.rstrip("_-.")) if prefix.strip("_-.") else "sample")
+    for key, suffix in (("raw", "raw_feature_bc_matrix.h5"), ("atac_fragments", "atac_fragments.tsv.gz")):
+        same = [n for n in names if n.startswith(prefix) and cr_name(n[len(prefix):]) == suffix]
+        if same:
+            c.files[key] = files[same[0]]
+    return c
+
+
 def detect_folder(folder: Path, subdirs: list[str], names: list[str], is_mtx, indir: InputDir,
                   ignored: list[dict]) -> tuple[list[Candidate], bool]:
     """Candidates in one folder, and whether the folder is a Cell Ranger sample (its sub-folders are then not
     looked at). Raw matrices without a filtered one are added to `ignored`."""
     files = {n: folder / n for n in names}
-    filtered = sorted(n for n in names if n.endswith("filtered_feature_bc_matrix.h5"))
-    raw = sorted(n for n in names if n.endswith("raw_feature_bc_matrix.h5"))
+    filtered = sorted(n for n in names if cr_name(n).endswith("filtered_feature_bc_matrix.h5"))
+    raw = sorted(n for n in names if cr_name(n).endswith("raw_feature_bc_matrix.h5"))
+    if len(filtered) > 1 and not subdirs:
+        # several samples' files side by side, told apart by a name prefix (sam-1-filtered-feature-bc-matrix.h5)
+        return [prefixed_sample(folder, n, names, files) for n in filtered], True
     mtx = {d: folder / d for d in subdirs if d.endswith("feature_bc_matrix") and is_mtx(folder / d)}
     filtered += sorted(d for d in mtx if d.endswith("filtered_feature_bc_matrix"))
     raw += sorted(d for d in mtx if d.endswith("raw_feature_bc_matrix"))
@@ -87,8 +107,9 @@ def detect_folder(folder: Path, subdirs: list[str], names: list[str], is_mtx, in
         c = Candidate("cellranger", folder, {"matrix": files[filtered[0]]}, default_id_for(folder, indir.root))
         if raw:
             c.files["raw"] = files[raw[0]]
-        if "atac_fragments.tsv.gz" in names:
-            c.files["atac_fragments"] = files["atac_fragments.tsv.gz"]
+        frags = [n for n in names if cr_name(n).endswith("atac_fragments.tsv.gz")]
+        if frags:
+            c.files["atac_fragments"] = files[frags[0]]
         return [c], True
     cands = []
     for n in raw:
