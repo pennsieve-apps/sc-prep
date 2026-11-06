@@ -149,7 +149,7 @@ outputs:
     formats:
       - format_3590
     mediaTypes:
-      - application/x-hdf5
+      - "application/x-hdf5; profile=tenx-h5"
       - application/json
   - name: metadata
     description: >-
