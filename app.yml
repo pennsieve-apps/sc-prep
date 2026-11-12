@@ -21,9 +21,6 @@ application:
     - multiome
     - anndata
     - preprocessing
-    - neuroscience
-    - pain
-    - musculoskeletal
 runtime:
   cpu: 2048
   # One sample in memory at a time. Measured in the linux/amd64 image: all 42 Discover 480 samples (the
