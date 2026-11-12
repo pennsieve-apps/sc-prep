@@ -1,5 +1,6 @@
 cff-version: 1.2.0
-message: If you use this app, please cite it and the works it builds on, listed under references.
+message: >-
+  If you use this app, please cite the work it implements (preferred-citation), this release, and Pennsieve (RRID:SCR_021677); the other works it builds on are listed under references.
 type: software
 title: Single-cell Prep
 abstract: 'The first step of the single-cell workflows: finds Cell Ranger (count, multi / Flex, ARC), AnnData and
@@ -24,6 +25,28 @@ keywords:
 - anndata
 - preprocessing
 - sparc
+# The work this app implements; the release report's "How to cite" puts it first.
+preferred-citation:
+  type: article
+  title: 'SCANPY: large-scale single-cell gene expression data analysis'
+  authors:
+  - family-names: Wolf
+    given-names: F. Alexander
+    orcid: https://orcid.org/0000-0002-8760-7838
+  - family-names: Angerer
+    given-names: Philipp
+  - family-names: Theis
+    given-names: Fabian J.
+  year: 2018
+  journal: Genome Biology
+  volume: 19
+  issue: '1'
+  start: '15'
+  doi: 10.1186/s13059-017-1382-0
+  identifiers:
+  - type: other
+    value: PMID:29409532
+    description: PubMed
 references:
 - type: article
   title: 'SCANPY: large-scale single-cell gene expression data analysis'
